@@ -8,6 +8,7 @@ import com.fooddelivery.catalog_service.Mapper.RestaurantMapper;
 import com.fooddelivery.catalog_service.Repository.MenuCategoryRepository;
 import com.fooddelivery.catalog_service.Repository.MenuItemRepository;
 import com.fooddelivery.catalog_service.Repository.RestaurantRepository;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +21,7 @@ public class CafeAdminService {
     private final MenuCategoryRepository menuCategoryRepository;
     private final MenuItemRepository menuItemRepository;
     private final RestaurantMapper restaurantMapper;
+    private final JwtService jwtService;
 
     public RestaurantResponse updateProfile(UUID cafeId, UpdateRestaurantRequest request) {
         Restaurant restaurant = restaurantRepository.findById(cafeId)
@@ -129,6 +131,11 @@ public class CafeAdminService {
                 .orElseThrow(() -> new RuntimeException("Позиция не найдена"));
         item.setAvailable(available);
         menuItemRepository.save(item);
+    }
+
+    public UUID getCafeIdFromToken(HttpServletRequest request) {
+        String token = request.getHeader("Authorization").substring(7);
+        return jwtService.extractUserId(token);
     }
 
 }

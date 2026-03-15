@@ -2,6 +2,7 @@ package com.fooddelivery.catalog_service.Controller;
 
 import com.fooddelivery.catalog_service.Dto.*;
 import com.fooddelivery.catalog_service.Service.CafeAdminService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -18,14 +19,16 @@ public class CafeAdminController {
     @PutMapping("/profile")
     public ResponseEntity<RestaurantResponse> updateProfile(
             @Valid @RequestBody UpdateRestaurantRequest request,
-            @RequestHeader ("X-Cafe-Id") UUID cafeID){
-        return ResponseEntity.ok(cafeAdminService.updateProfile(cafeID, request));
+            HttpServletRequest httpRequest){
+            UUID cafeId = cafeAdminService.getCafeIdFromToken(httpRequest);
+        return ResponseEntity.ok(cafeAdminService.updateProfile(cafeId, request));
     }
 
     @PostMapping("/menu/categories")
     public ResponseEntity<MenuCategoryResponse> createCategory(
             @Valid @RequestBody CreateCategoryRequest request,
-            @RequestHeader("X-Cafe-Id") UUID cafeId) {
+            HttpServletRequest httpRequest) {
+        UUID cafeId = cafeAdminService.getCafeIdFromToken(httpRequest);
         return ResponseEntity.ok(cafeAdminService.createCategory(cafeId, request));
     }
 
