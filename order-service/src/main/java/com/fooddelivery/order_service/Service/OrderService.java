@@ -70,7 +70,8 @@ public class OrderService {
 
         Order saved = orderRepository.save(order);
 
-        rabbitTemplate.convertAndSend("order.created", saved.getId().toString());
+        rabbitTemplate.convertAndSend("order.created",
+                saved.getId().toString() + ":" + saved.getClientId().toString());
 
         return orderMapper.toResponse(saved);
     }

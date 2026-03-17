@@ -1,6 +1,8 @@
 package com.fooddelivery.auth_service.Controller;
 
 import com.fooddelivery.auth_service.Dto.CreateCafeAdminRequest;
+import com.fooddelivery.auth_service.Entity.User;
+import com.fooddelivery.auth_service.Repository.UserRepository;
 import com.fooddelivery.auth_service.Service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +16,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AdminController {
     private final AuthService authService;
+    private final UserRepository userRepository;
 
     @PostMapping("/users/cafe-admin")
     public ResponseEntity<String> createCafeAdmin(@Valid @RequestBody CreateCafeAdminRequest request){
@@ -27,5 +30,12 @@ public class AdminController {
             @PathVariable Boolean active){
         authService.updateUserStatus(id, active);
         return ResponseEntity.ok("Статус обновлён");
+    }
+
+    @GetMapping("/users/{id}/email")
+    public ResponseEntity<String> getUserEmail(@PathVariable UUID id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+        return ResponseEntity.ok(user.getEmail());
     }
 }

@@ -32,7 +32,9 @@ public class OrderController {
     }
 
     @GetMapping("/my")
-    public ResponseEntity<List<OrderResponse>> getMyOrders(@RequestHeader("X-Client-Id") UUID clientId) {
+    public ResponseEntity<List<OrderResponse>> getMyOrders(
+            HttpServletRequest httpRequest) {
+        UUID clientId = orderService.getClientIdFromToken(httpRequest);
         return ResponseEntity.ok(orderService.getMyOrders(clientId));
     }
 

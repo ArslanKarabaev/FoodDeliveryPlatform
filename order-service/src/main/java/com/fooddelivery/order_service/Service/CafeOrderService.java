@@ -43,7 +43,8 @@ public class CafeOrderService {
         order.setCafeConfirmedAt(LocalDateTime.now());
         orderRepository.save(order);
 
-        rabbitTemplate.convertAndSend("order.confirmed", orderId.toString());
+        rabbitTemplate.convertAndSend("order.confirmed",
+                order.getId().toString() + ":" + order.getClientId().toString());
     }
 
     public void markReady(UUID orderId) {
@@ -58,7 +59,8 @@ public class CafeOrderService {
         order.setStatus(OrderStatus.READY);
         orderRepository.save(order);
 
-        rabbitTemplate.convertAndSend("order.ready", orderId.toString());
+        rabbitTemplate.convertAndSend("order.ready",
+                order.getId().toString() + ":" + order.getClientId().toString());
     }
 
     public void cancelOrder(UUID orderId, String reason) {
@@ -74,7 +76,8 @@ public class CafeOrderService {
         order.setCancelledReason(reason);
         orderRepository.save(order);
 
-        rabbitTemplate.convertAndSend("order.cancelled", orderId.toString());
+        rabbitTemplate.convertAndSend("order.cancelled",
+                order.getId().toString() + ":" + order.getClientId().toString());
     }
 
     public UUID getRestaurantIdFromToken(HttpServletRequest request) {

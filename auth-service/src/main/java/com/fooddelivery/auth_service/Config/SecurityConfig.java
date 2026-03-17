@@ -29,7 +29,12 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**").permitAll()
+                        .requestMatchers("/auth/register").permitAll()
+                        .requestMatchers("/auth/login").permitAll()
+                        .requestMatchers("/auth/refresh").permitAll()
+                        .requestMatchers("/auth/forgot-password").permitAll()
+                        .requestMatchers("/auth/reset-password").permitAll()
+                        .requestMatchers("/admin/users/*/email").permitAll()
                         .requestMatchers("/admin/**").hasRole("SUPER_ADMIN")
                         .anyRequest().authenticated()
                 ).addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

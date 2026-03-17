@@ -6,6 +6,7 @@ import com.fooddelivery.auth_service.Enums.Role;
 import com.fooddelivery.auth_service.Mapper.UserMapper;
 import com.fooddelivery.auth_service.Repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final RedisTemplate<String, String> redisTemplate;
+    private final RabbitTemplate rabbitTemplate;
 
     public void register(RegisterRequest request){
         if(userRepository.existsByEmail(request.getEmail())){
@@ -118,6 +120,45 @@ public class AuthService {
                 .orElseThrow(()-> new RuntimeException("Пользователь не найден"));
         user.setActive(active);
         userRepository.save(user);
+    }
+
+    public void forgotPassword(ForgotPasswordRequest request){
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(()-> new RuntimeException("Пользователь не найден"));
+
+        String resetToken = UUID.randomUUID().toString();
+
+        redisTemplate.opsForValue().set(
+                "reset:" + resetToken,
+                user.getEmail(),
+                1,
+                TimeUnit.HOURS
+        );
+
+        String resetLink = "http://localhost:3000/reset-password?token=" + resetToken;
+
+        rabbitTemplate.convertAndSend("password.reset",
+                user.getEmail() + ":" + resetLink);
+    }
+
+    public void resetPassword(ResetPasswordRequest request) {
+        // Проверяем токен в Redis
+        String email = (String) redisTemplate.opsForValue().get("reset:" + request.getToken());
+
+        if (email == null) {
+            throw new RuntimeException("Токен недействителен или истёк");
+        }
+
+        // Находим пользователя
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+
+        // Меняем пароль
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+
+        // Удаляем токен из Redis
+        redisTemplate.delete("reset:" + request.getToken());
     }
 
 }

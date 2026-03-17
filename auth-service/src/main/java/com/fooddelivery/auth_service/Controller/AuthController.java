@@ -1,9 +1,6 @@
 package com.fooddelivery.auth_service.Controller;
 
-import com.fooddelivery.auth_service.Dto.AuthResponse;
-import com.fooddelivery.auth_service.Dto.LoginRequest;
-import com.fooddelivery.auth_service.Dto.RefreshRequest;
-import com.fooddelivery.auth_service.Dto.RegisterRequest;
+import com.fooddelivery.auth_service.Dto.*;
 import com.fooddelivery.auth_service.Service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +42,20 @@ public class AuthController {
 
         AuthResponse response = authService.refresh(request);
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<String> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request) {
+        authService.forgotPassword(request);
+        return ResponseEntity.ok("Письмо отправлено");
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<String> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request) {
+        authService.resetPassword(request);
+        return ResponseEntity.ok("Пароль изменён");
     }
 
 
