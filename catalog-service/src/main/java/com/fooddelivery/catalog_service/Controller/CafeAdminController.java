@@ -5,8 +5,10 @@ import com.fooddelivery.catalog_service.Service.CafeAdminService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.UUID;
 
@@ -66,5 +68,24 @@ public class CafeAdminController {
         return ResponseEntity.ok("Статус обновлён");
     }
 
+    @PostMapping(value = "/media/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<MediaUploadResponse> uploadMedia(
+            @RequestParam MultipartFile file,
+            @RequestParam String type,
+            @RequestHeader("X-Cafe-Id") UUID cafeId){
+        MediaUploadResponse response = cafeAdminService.uploadMedia(file, type, cafeId);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping(value = "/certificates", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<MediaUploadResponse> uploadCertificate(
+            @RequestParam MultipartFile file,
+            @RequestParam String name,
+            @RequestParam(required = false) String expiryDate,
+            @RequestHeader("X-Cafe-Id") UUID cafeId) {
+
+        MediaUploadResponse response = cafeAdminService.uploadCertificate(file, name, expiryDate, cafeId);
+        return ResponseEntity.ok(response);
+    }
 }
 

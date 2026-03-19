@@ -11,8 +11,10 @@ import com.fooddelivery.catalog_service.Repository.RestaurantRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.util.UUID;
+import java.time.LocalDateTime;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +24,7 @@ public class CafeAdminService {
     private final MenuItemRepository menuItemRepository;
     private final RestaurantMapper restaurantMapper;
     private final JwtService jwtService;
+    private final S3Service s3Service;
 
     public RestaurantResponse updateProfile(UUID cafeId, UpdateRestaurantRequest request) {
         Restaurant restaurant = restaurantRepository.findById(cafeId)
@@ -136,6 +139,67 @@ public class CafeAdminService {
     public UUID getCafeIdFromToken(HttpServletRequest request) {
         String token = request.getHeader("Authorization").substring(7);
         return jwtService.extractUserId(token);
+    }
+
+    public MediaUploadResponse uploadMedia(MultipartFile file, String type, UUID cafeId) {
+        validateImageFile(file);
+
+        String folder = switch (type) {
+            case "logo" -> "logos";
+            case "cover" -> "covers";
+            case "menu-item" -> "menu-items";
+            default ->
+                    throw new IllegalArgumentException("Неверный тип " + type + ". Доступно только logo, cover, menu-item");
+        };
+
+        String url = s3Service.upload(file, folder);
+        return new MediaUploadResponse(url, type);
+    }
+
+    public MediaUploadResponse uploadCertificate(MultipartFile file, String name, String expiryDate, UUID cafeId) {
+        validateFileSize(file, 10 * 1024 * 1024);
+        String url = s3Service.upload(file, "certificates");
+
+        Restaurant restaurant = restaurantRepository.findById(cafeId)
+                .orElseThrow(()-> new RuntimeException("Ресторан не найден"));
+
+        List<Map<String, String>> certificates = restaurant.getCertificates();
+        if(certificates == null){
+            certificates = new ArrayList<>();
+        }
+
+        Map<String, String> cert = new HashMap<>();
+        cert.put("name", name);
+        cert.put("url", url);
+        cert.put("expiryDate", expiryDate);
+        cert.put("uploadedAt", LocalDateTime.now().toString());
+        certificates.add(cert);
+
+        restaurant.setCertificates(certificates);
+        restaurantRepository.save(restaurant);
+
+        return new MediaUploadResponse(url, "certificate");
+    }
+
+
+    private void validateImageFile(MultipartFile file) {
+    long maxSize = 5 * 1024 * 1024;
+    validateFileSize(file, maxSize);
+
+    String contentType = file.getContentType();
+    if(contentType == null || !contentType.startsWith("image/")){
+        throw new IllegalArgumentException("Разрешены только изображения (jpg, png, webp)");
+        }
+    }
+
+    private void validateFileSize(MultipartFile file, long maxBytes) {
+        if(file.isEmpty()){
+            throw new IllegalArgumentException("Файл не может быть пустым");
+        }
+
+        if(file.getSize() > maxBytes){
+            throw new IllegalArgumentException("Файл слишком большой. Максимум: " + (maxBytes / 1024 / 1024) + " MB");
+        }
     }
 
 }
