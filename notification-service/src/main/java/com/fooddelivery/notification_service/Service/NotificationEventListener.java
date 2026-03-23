@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -15,16 +16,11 @@ public class NotificationEventListener {
     private final EmailService emailService;
     private final AuthServiceClient authServiceClient;
 
-    private String[] parseMessage(String message){
-        return message.split(":");
-    }
-
     @RabbitListener(queues = "order.created")
-    public void handleOrderCreated(String message){
-        log.info("Получено событие order.created: {}", message);
-        String[] parts = parseMessage(message);
-        UUID orderId = UUID.fromString(parts[0]);
-        UUID clientId = UUID.fromString(parts[1]);
+    public void handleOrderCreated(Map<String, String> event){
+        log.info("Получено событие order.created: {}", event);
+        UUID orderId = UUID.fromString(event.get("orderId"));
+        UUID clientId = UUID.fromString(event.get("clientId"));
 
         try {
             String email = authServiceClient.getUserEmail(clientId);
@@ -42,11 +38,10 @@ public class NotificationEventListener {
     }
 
     @RabbitListener(queues = "order.confirmed")
-    public void handleOrderConfirmed(String message){
-        log.info("Получено событие order.confirmed: {}", message);
-        String[] parts = parseMessage(message);
-        UUID orderId = UUID.fromString(parts[0]);
-        UUID clientId = UUID.fromString(parts[1]);
+    public void handleOrderConfirmed(Map<String, String> event){
+        log.info("Получено событие order.confirmed: {}", event);
+        UUID orderId = UUID.fromString(event.get("orderId"));
+        UUID clientId = UUID.fromString("clientId");
 
         try {
             String email = authServiceClient.getUserEmail(clientId);
@@ -64,11 +59,11 @@ public class NotificationEventListener {
     }
 
     @RabbitListener(queues = "order.cancelled")
-    public void handleOrderCancelled(String message){
-        log.info("Получено событие order.cancelled: {}", message);
-        String[] parts = parseMessage(message);
-        UUID orderId = UUID.fromString(parts[0]);
-        UUID clientId = UUID.fromString(parts[1]);
+    public void handleOrderCancelled(Map<String, String> event){
+        log.info("Получено событие order.cancelled: {}", event);
+        UUID orderId = UUID.fromString(event.get("orderId"));
+        UUID clientId = UUID.fromString(event.get("clientId"));
+        String reason = event.get("reason");
 
         try {
             String email = authServiceClient.getUserEmail(clientId);
@@ -76,7 +71,7 @@ public class NotificationEventListener {
                     clientId,
                     email,
                     "Заказ отменен",
-                    "Ваз заказ был отменен",
+                    reason,
                     "order.cancelled",
                     orderId
             );
@@ -86,11 +81,10 @@ public class NotificationEventListener {
     }
 
     @RabbitListener(queues = "payment.completed")
-    public void handlePaymentCompleted(String message) {
-        log.info("Получено событие payment.completed: {}", message);
-        String[] parts = parseMessage(message);
-        UUID orderId = UUID.fromString(parts[0]);
-        UUID clientId = UUID.fromString(parts[1]);
+    public void handlePaymentCompleted(Map<String, String> event) {
+        log.info("Получено событие payment.completed: {}", event);
+        UUID orderId = UUID.fromString(event.get("orderId"));
+        UUID clientId = UUID.fromString(event.get("clientId"));
 
         try {
             String email = authServiceClient.getUserEmail(clientId);
@@ -108,11 +102,10 @@ public class NotificationEventListener {
     }
 
     @RabbitListener(queues = "payment.failed")
-    public void handlePaymentFailed(String message) {
-        log.info("Получено событие payment.failed: {}", message);
-        String[] parts = parseMessage(message);
-        UUID orderId = UUID.fromString(parts[0]);
-        UUID clientId = UUID.fromString(parts[1]);
+    public void handlePaymentFailed(Map<String, String> event) {
+        log.info("Получено событие payment.failed: {}", event);
+        UUID orderId = UUID.fromString(event.get("orderId"));
+        UUID clientId = UUID.fromString(event.get("clientId"));
 
         try {
             String email = authServiceClient.getUserEmail(clientId);
@@ -130,11 +123,10 @@ public class NotificationEventListener {
     }
 
     @RabbitListener(queues = "delivery.created")
-    public void handleDeliveryCreated(String message) {
-        log.info("Получено событие delivery.created: {}", message);
-        String[] parts = parseMessage(message);
-        UUID orderId = UUID.fromString(parts[0]);
-        UUID clientId = UUID.fromString(parts[1]);
+    public void handleDeliveryCreated(Map<String, String> event) {
+        log.info("Получено событие delivery.created: {}", event);
+        UUID orderId = UUID.fromString(event.get("orderId"));
+        UUID clientId = UUID.fromString(event.get("clientId"));
 
         try {
             String email = authServiceClient.getUserEmail(clientId);
@@ -152,15 +144,31 @@ public class NotificationEventListener {
     }
 
     @RabbitListener(queues = "delivery.status.updated")
-    public void handleDeliveryStatusUpdated(String message) {
-        log.info("Получено событие delivery.status.updated: {}", message);
-
-        String[] parts = message.split(":");
-        UUID orderId = UUID.fromString(parts[0]);
-        String status = parts[1];
+    public void handleDeliveryStatusUpdated(Map<String, String> event) {
+        log.info("Получено событие delivery.status.updated: {}", event);
+        UUID orderId = UUID.fromString(event.get("orderId"));
+        String status = event.get("status");
 
         log.info("Статус доставки для заказа {} изменён на {}", orderId, status);
-        // Здесь можно добавить уведомление о статусе доставки
+    }
+
+    @RabbitListener(queues = "password.reset")
+    public void handlePasswordReset(Map<String, String> event) {
+        String email = event.get("email");
+        UUID clientId = UUID.fromString(event.get("clientId"));
+        String resetLink = event.get("resetLink");
+        try {
+            emailService.sendEmail(
+                    clientId,
+                    email,
+                    "Сброс пароля",
+                    "Для сброса пароля перейдите по ссылке:\n" + resetLink + "\n\nСсылка действительна 1 час.",
+                    "password.reset",
+                    null
+            );
+        } catch (Exception e) {
+            log.error("Ошибка отправки уведомления: {}", e.getMessage());
+        }
     }
 
 

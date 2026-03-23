@@ -21,6 +21,10 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/swagger-ui/**").permitAll()
+                        .requestMatchers("/v3/api-docs/**").permitAll()
+                        .requestMatchers("/swagger-ui.html").permitAll()
+
                         .requestMatchers("/orders/**").hasRole("CLIENT")
                         .requestMatchers("/cafe/orders/**").hasRole("CAFE_ADMIN")
                         .anyRequest().authenticated()

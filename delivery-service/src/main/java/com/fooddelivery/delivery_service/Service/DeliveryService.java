@@ -6,15 +6,15 @@ import com.fooddelivery.delivery_service.Dto.ManualUpdateRequest;
 import com.fooddelivery.delivery_service.Entity.Delivery;
 import com.fooddelivery.delivery_service.Enum.DeliveryStatus;
 import com.fooddelivery.delivery_service.Repository.DeliveryRepository;
-import com.sun.jdi.event.StepEvent;
 import lombok.RequiredArgsConstructor;
-
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -72,8 +72,11 @@ public class DeliveryService {
 
         Delivery saved = deliveryRepository.save(delivery);
 
-        rabbitTemplate.convertAndSend("delivery.created",
-                saved.getOrderId().toString() + ":" + saved.getClientId().toString());
+        Map<String, String> deliveryCreatedEvent = new HashMap<>();
+        deliveryCreatedEvent.put("orderId", saved.getOrderId().toString());
+        deliveryCreatedEvent.put("clientId", saved.getClientId().toString());
+
+        rabbitTemplate.convertAndSend("delivery.created", deliveryCreatedEvent);
 
         return toResponse(saved);
     }
@@ -95,8 +98,11 @@ public class DeliveryService {
         delivery.setStatus(newStatus);
         deliveryRepository.save(delivery);
 
-        rabbitTemplate.convertAndSend("delivery.status.updated",
-                delivery.getOrderId().toString() + ":" + newStatus.name());
+        Map<String, String> deliveryStatusUpdatedEvent = new HashMap<>();
+        deliveryStatusUpdatedEvent.put("orderId", delivery.getOrderId().toString());
+        deliveryStatusUpdatedEvent.put("newStatus", newStatus.name());
+
+        rabbitTemplate.convertAndSend("delivery.status.updated", deliveryStatusUpdatedEvent);
     }
 
     public void manualUpdate(UUID orderId, ManualUpdateRequest request) {
@@ -110,8 +116,10 @@ public class DeliveryService {
 
         deliveryRepository.save(delivery);
 
-        rabbitTemplate.convertAndSend("delivery.status.updated",
-                orderId.toString() + ":" + request.getStatus().name());
+        Map<String, String> deliveryStatusManualUpdatedEvent = new HashMap<>();
+        deliveryStatusManualUpdatedEvent.put("orderId", delivery.getOrderId().toString());
+        deliveryStatusManualUpdatedEvent.put("status", request.getStatus().name());
+        rabbitTemplate.convertAndSend("delivery.status.updated",deliveryStatusManualUpdatedEvent);
     }
 
 

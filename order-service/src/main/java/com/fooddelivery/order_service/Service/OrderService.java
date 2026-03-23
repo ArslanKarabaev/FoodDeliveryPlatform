@@ -72,8 +72,10 @@ public class OrderService {
 
         Order saved = orderRepository.save(order);
 
-        rabbitTemplate.convertAndSend("order.created",
-                saved.getId().toString() + ":" + saved.getClientId().toString());
+        Map<String,String> orderCreatedEvent = new HashMap<>();
+        orderCreatedEvent.put("orderId", saved.getId().toString());
+        orderCreatedEvent.put("clientId", saved.getClientId().toString());
+        rabbitTemplate.convertAndSend("order.created", orderCreatedEvent);
 
         return orderMapper.toResponse(saved);
     }
@@ -107,6 +109,12 @@ public class OrderService {
         order.setStatus(OrderStatus.CANCELLED);
         order.setCancelledReason("Отменён клиентом");
         orderRepository.save(order);
+
+        Map<String, String> orderCancelledEvent = new HashMap<>();
+        orderCancelledEvent.put("orderId", order.getId().toString());
+        orderCancelledEvent.put("clientId", order.getClientId().toString());
+        orderCancelledEvent.put("reason", order.getCancelledReason());
+        rabbitTemplate.convertAndSend("order.cancelled", orderCancelledEvent);
     }
 
     private String generateOrderNumber() {
@@ -129,7 +137,11 @@ public class OrderService {
              order.setCancelledReason("Автоотмена: истекло время ожидания оплаты (15 мин)");
              orderRepository.save(order);
 
-             rabbitTemplate.convertAndSend("order.cancelled", order.getId());
+             Map<String, String> cancelExpiredOrderEvent = new HashMap<>();
+             cancelExpiredOrderEvent.put("orderId", order.getId().toString());
+             cancelExpiredOrderEvent.put("clientId", order.getClientId().toString());
+             cancelExpiredOrderEvent.put("reason", order.getCancelledReason());
+             rabbitTemplate.convertAndSend("order.cancelled", cancelExpiredOrderEvent);
         }
 
     }

@@ -11,6 +11,8 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -137,27 +139,26 @@ public class AuthService {
 
         String resetLink = "http://localhost:3000/reset-password?token=" + resetToken;
 
-        rabbitTemplate.convertAndSend("password.reset",
-                user.getEmail() + ":" + resetLink);
+        Map<String, String> event = new HashMap<>();
+        event.put("email", user.getEmail());
+        event.put("clientId", user.getId().toString());
+        event.put("resetLink", resetLink);
+        rabbitTemplate.convertAndSend("password.reset", event);
     }
 
     public void resetPassword(ResetPasswordRequest request) {
-        // Проверяем токен в Redis
         String email = (String) redisTemplate.opsForValue().get("reset:" + request.getToken());
 
         if (email == null) {
             throw new RuntimeException("Токен недействителен или истёк");
         }
 
-        // Находим пользователя
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
 
-        // Меняем пароль
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
 
-        // Удаляем токен из Redis
         redisTemplate.delete("reset:" + request.getToken());
     }
 

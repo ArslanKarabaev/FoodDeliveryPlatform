@@ -1,5 +1,4 @@
-package com.fooddelivery.auth_service.Config;
-
+package com.fooddelivery.payment_service.Config;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
@@ -29,8 +28,14 @@ public class RabbitMQConfig {
         template.setMessageConverter(jsonMessageConverter());
         return template;
     }
+
     @Bean
-    public Queue passwordResetQueue() {
-        return QueueBuilder.durable("password.reset").build();
-    }
+    public Queue paymentCompletedQueue(){ return QueueBuilder.durable("payment.completed").build();}
+
+    @Bean
+    public Queue paymentFailedQueue(){ return QueueBuilder.durable("payment.failed").build();}
+
+    @Bean
+    public Queue paymentRefundedQueue(){ return QueueBuilder.durable("payment.refunded").build();}
+
 }

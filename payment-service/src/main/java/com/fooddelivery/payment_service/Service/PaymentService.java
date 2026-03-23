@@ -16,9 +16,7 @@ import org.springframework.stereotype.Service;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.time.LocalDateTime;
-import java.util.Base64;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -87,15 +85,20 @@ public class PaymentService {
             payment.setStatus(PaymentStatus.COMPLETED);
             paymentRepository.save(payment);
 
-            rabbitTemplate.convertAndSend("payment.completed",
-                    payment.getOrderId().toString() + ":" + payment.getClientId().toString());
+            Map<String, String> paymentCompletedEvent = new HashMap<>();
+            paymentCompletedEvent.put("orderId", payment.getOrderId().toString());
+            paymentCompletedEvent.put("clientId", payment.getClientId().toString());
+
+            rabbitTemplate.convertAndSend("payment.completed", paymentCompletedEvent);
             log.info("Платеж завершен: {}", payment.getOrderId());
         } else {
             payment.setStatus(PaymentStatus.FAILED);
             paymentRepository.save(payment);
 
-            rabbitTemplate.convertAndSend("payment.failed",
-                    payment.getOrderId().toString() + ":" + payment.getClientId().toString());
+            Map<String, String> paymentFailedEvent = new HashMap<>();
+            paymentFailedEvent.put("orderId", payment.getOrderId().toString());
+            paymentFailedEvent.put("clientId", payment.getClientId().toString());
+            rabbitTemplate.convertAndSend("payment.failed", paymentFailedEvent);
             log.info("Платеж не прошел: {}", payment.getOrderId());
         }
     }
@@ -113,8 +116,11 @@ public class PaymentService {
         payment.setRefundedAt(LocalDateTime.now());
         paymentRepository.save(payment);
 
-        rabbitTemplate.convertAndSend("payment.refunded",
-                payment.getOrderId().toString() + ":" + payment.getClientId().toString());
+        Map<String, String> paymentRefundedEvent = new HashMap<>();
+        paymentRefundedEvent.put("orderId", payment.getOrderId().toString());
+        paymentRefundedEvent.put("clientId", payment.getClientId().toString());
+
+        rabbitTemplate.convertAndSend("payment.refunded", paymentRefundedEvent);
     }
 
     public void markPayoutComplete(UUID paymentId) {
