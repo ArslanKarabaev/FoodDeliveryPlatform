@@ -9,9 +9,11 @@ import com.fooddelivery.order_service.Repository.OrderRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -115,6 +117,21 @@ public class OrderService {
     public UUID getClientIdFromToken(HttpServletRequest request) {
         String token = request.getHeader("Authorization").substring(7);
         return jwtService.extractUserId(token);
+    }
+
+    @Scheduled(fixedRate = 60_000)
+    public void cancelExpiredOrders(){
+        LocalDateTime expiredBefore = LocalDateTime.now().minusMinutes(15);
+        List<Order> expiredOrders = orderRepository
+                .findByStatusAndCreatedAtBefore(OrderStatus.PENDING, expiredBefore);
+        for(Order order : expiredOrders){
+             order.setStatus(OrderStatus.CANCELLED);
+             order.setCancelledReason("Автоотмена: истекло время ожидания оплаты (15 мин)");
+             orderRepository.save(order);
+
+             rabbitTemplate.convertAndSend("order.cancelled", order.getId());
+        }
+
     }
 
 }
