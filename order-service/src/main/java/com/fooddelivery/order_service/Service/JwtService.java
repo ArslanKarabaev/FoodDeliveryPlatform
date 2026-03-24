@@ -32,6 +32,14 @@ public class JwtService {
         return UUID.fromString(userId);
     }
 
+    public UUID extractCafeId(String token){
+        String cafeId = getClaims(token).get("cafeId", String.class);
+        if (cafeId == null) {
+            throw new RuntimeException("cafeId отсутствует в токене. Войдите заново.");
+        }
+        return UUID.fromString(cafeId);
+    }
+
     public boolean isTokenValid(String token) {
         try {
             getClaims(token);

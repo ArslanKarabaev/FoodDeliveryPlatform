@@ -41,8 +41,8 @@ public class CatalogService {
         return restaurantMapper.toResponse(restaurant);
     }
 
-    public List<MenuCategoryResponse> getMenu(UUID restaurantId){
-        return menuCategoryRepository.findByRestaurantIdOrderByPosition(restaurantId)
+    public List<MenuCategoryResponse> getMenu(UUID restaurantId) {
+        return menuCategoryRepository.findByRestaurantIdWithItems(restaurantId)
                 .stream()
                 .map(restaurantMapper::toCategoryResponse)
                 .collect(Collectors.toList());

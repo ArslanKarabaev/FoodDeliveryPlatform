@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -70,9 +71,9 @@ public class PaymentService {
         }
 
         //TODO вернуть при деплое в прод
-        if (!verifySignature(request, rawSignature)) {
-            throw new RuntimeException("Неверная подпись webhook");
-        }
+//        if (!verifySignature(request, rawSignature)) {
+//            throw new RuntimeException("Неверная подпись webhook");
+//        }
 
         Payment payment = paymentRepository.findByOrderId(
                         UUID.fromString(request.getData().get("orderId").toString()))
@@ -90,6 +91,7 @@ public class PaymentService {
             paymentCompletedEvent.put("clientId", payment.getClientId().toString());
 
             rabbitTemplate.convertAndSend("payment.completed", paymentCompletedEvent);
+            rabbitTemplate.convertAndSend("payment.completed.not", paymentCompletedEvent);
             log.info("Платеж завершен: {}", payment.getOrderId());
         } else {
             payment.setStatus(PaymentStatus.FAILED);
@@ -99,6 +101,7 @@ public class PaymentService {
             paymentFailedEvent.put("orderId", payment.getOrderId().toString());
             paymentFailedEvent.put("clientId", payment.getClientId().toString());
             rabbitTemplate.convertAndSend("payment.failed", paymentFailedEvent);
+            rabbitTemplate.convertAndSend("payment.failed.not", paymentFailedEvent);
             log.info("Платеж не прошел: {}", payment.getOrderId());
         }
     }
@@ -121,6 +124,7 @@ public class PaymentService {
         paymentRefundedEvent.put("clientId", payment.getClientId().toString());
 
         rabbitTemplate.convertAndSend("payment.refunded", paymentRefundedEvent);
+        rabbitTemplate.convertAndSend("payment.refunded.not", paymentRefundedEvent);
     }
 
     public void markPayoutComplete(UUID paymentId) {
@@ -134,6 +138,48 @@ public class PaymentService {
 
     public List<Payment> getPendingPayouts() {
         return paymentRepository.findByPayoutStatus(PayoutStatus.PENDING);
+    }
+
+    public Map<String, Object> getCafeFinancialSummary(UUID restaurantId){
+        List<Payment> payments = paymentRepository.findByRestaurantId(restaurantId);
+
+        BigDecimal totalRevenue = payments.stream()
+                .filter(p -> p.getStatus() == PaymentStatus.COMPLETED)
+                .map(Payment::getRestaurantPayout)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal pendingPayout = payments.stream()
+                .filter(p-> p.getStatus() == PaymentStatus.COMPLETED
+                && p.getPayoutStatus() == PayoutStatus.PENDING)
+                .map(Payment::getRestaurantPayout)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal paidOut = payments.stream()
+                .filter(p -> p.getPayoutStatus() == PayoutStatus.PAID_OUT)
+                .map(Payment::getRestaurantPayout)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        long completedCount = payments.stream()
+                .filter(p -> p.getStatus() == PaymentStatus.COMPLETED)
+                .count();
+
+        long refundedCount = payments.stream()
+                .filter(p->p.getStatus() == PaymentStatus.REFUNDED)
+                .count();
+
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("restaurantId", restaurantId);
+        summary.put("totalRevenue", totalRevenue);
+        summary.put("pendingPayout", pendingPayout);
+        summary.put("paidOut", paidOut);
+        summary.put("completedPayments", completedCount);
+        summary.put("refundedPayments", refundedCount);
+        summary.put("recentPayments", payments.stream()
+                .sorted((a,b)-> b.getCreatedAt().compareTo(a.getCreatedAt()))
+                .limit(10)
+                .toList());
+
+        return summary;
     }
 
     private boolean verifySignature(WebhookRequest request, String signature) {

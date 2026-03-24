@@ -33,9 +33,18 @@ public class RabbitMQConfig {
     public Queue paymentCompletedQueue(){ return QueueBuilder.durable("payment.completed").build();}
 
     @Bean
+    public Queue paymentCompletedNotQueue(){ return QueueBuilder.durable("payment.completed.not").build();}
+
+    @Bean
     public Queue paymentFailedQueue(){ return QueueBuilder.durable("payment.failed").build();}
 
     @Bean
+    public Queue paymentFailedNotQueue(){ return QueueBuilder.durable("payment.failed.not").build();}
+
+    @Bean
     public Queue paymentRefundedQueue(){ return QueueBuilder.durable("payment.refunded").build();}
+
+    @Bean
+    public Queue paymentRefundedNotQueue(){ return QueueBuilder.durable("payment.refunded.not").build();}
 
 }

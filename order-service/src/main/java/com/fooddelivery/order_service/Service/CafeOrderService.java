@@ -11,7 +11,9 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -43,8 +45,10 @@ public class CafeOrderService {
         order.setCafeConfirmedAt(LocalDateTime.now());
         orderRepository.save(order);
 
-        rabbitTemplate.convertAndSend("order.confirmed",
-                order.getId().toString() + ":" + order.getClientId().toString());
+        Map<String, String> event = new HashMap<>();
+        event.put("orderId", order.getId().toString());
+        event.put("clientId", order.getClientId().toString());
+        rabbitTemplate.convertAndSend("order.confirmed", event);
     }
 
     public void markReady(UUID orderId) {
@@ -59,8 +63,10 @@ public class CafeOrderService {
         order.setStatus(OrderStatus.READY);
         orderRepository.save(order);
 
-        rabbitTemplate.convertAndSend("order.ready",
-                order.getId().toString() + ":" + order.getClientId().toString());
+        Map<String, String> readyEvent = new HashMap<>();
+        readyEvent.put("orderId", order.getId().toString());
+        readyEvent.put("clientId", order.getClientId().toString());
+        rabbitTemplate.convertAndSend("order.ready", readyEvent);
     }
 
     public void cancelOrder(UUID orderId, String reason) {
@@ -76,13 +82,16 @@ public class CafeOrderService {
         order.setCancelledReason(reason);
         orderRepository.save(order);
 
-        rabbitTemplate.convertAndSend("order.cancelled",
-                order.getId().toString() + ":" + order.getClientId().toString());
+        Map<String, String> cancelEvent = new HashMap<>();
+        cancelEvent.put("orderId", order.getId().toString());
+        cancelEvent.put("clientId", order.getClientId().toString());
+        cancelEvent.put("reason", reason);
+        rabbitTemplate.convertAndSend("order.cancelled", cancelEvent);
     }
 
     public UUID getRestaurantIdFromToken(HttpServletRequest request) {
         String token = request.getHeader("Authorization").substring(7);
-        return jwtService.extractUserId(token);
+        return jwtService.extractCafeId(token);
     }
 
 }

@@ -13,6 +13,7 @@ import java.util.UUID;
 @Repository
 public interface RestaurantRepository extends JpaRepository<Restaurant, UUID> {
     Optional<Restaurant> findBySlug(String slug);
+    Optional<Restaurant> findByCafeAdminId(UUID cafeAdminId);
     boolean existsBySlug(String slug);
     Page<Restaurant> findByIsActiveTrue(Pageable pageable);
     Page<Restaurant> findByIsActiveTrueAndCity(String city, Pageable pageable);

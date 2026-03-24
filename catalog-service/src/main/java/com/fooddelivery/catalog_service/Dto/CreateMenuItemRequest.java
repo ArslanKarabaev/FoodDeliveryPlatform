@@ -10,18 +10,21 @@ import java.util.UUID;
 
 @Data
 public class CreateMenuItemRequest {
-    @NotNull(message = "Категория обязательна")
+    @NotNull(message = "Категория обязательна", groups = OnCreate.class)
     private UUID categoryId;
 
-    @NotBlank(message = "Название обязательно")
+    @NotBlank(message = "Название обязательно", groups = OnCreate.class)
     private String name;
 
     private String description;
 
-    @NotNull(message = "Цена обязательна")
+    @NotNull(message = "Цена обязательна", groups = OnCreate.class)
     private BigDecimal price;
 
     private Integer weightGrams;
     private List<String> allergens;
     private List<String> tags;
+
+    public interface OnCreate {}
+    public interface OnUpdate {}
 }

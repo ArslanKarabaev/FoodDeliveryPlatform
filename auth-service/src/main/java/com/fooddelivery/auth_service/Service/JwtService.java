@@ -27,10 +27,14 @@ public class JwtService {
     }
 
     public String generateAccessToken(User user){
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(user.getEmail())
                 .claim("role", user.getRole().name())
-                .claim("userId", user.getId().toString())
+                .claim("userId", user.getId().toString());
+            if (user.getCafeId() != null) {
+                builder = builder.claim("cafeId", user.getCafeId().toString());
+            }
+                return builder
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + accessTokenExpiration))
                 .signWith(getSignInKey())

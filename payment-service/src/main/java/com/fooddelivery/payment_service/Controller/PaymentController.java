@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -47,6 +48,12 @@ public class PaymentController {
     public ResponseEntity<String> markPayoutComplete(@PathVariable UUID id) {
         paymentService.markPayoutComplete(id);
         return ResponseEntity.ok("Выплата отмечена");
+    }
+
+    @GetMapping("/cafe/payments")
+    public ResponseEntity<Map<String, Object>> getCafePayments(
+            @RequestHeader("X-Cafe-Id") UUID restaurantId){
+        return ResponseEntity.ok(paymentService.getCafeFinancialSummary(restaurantId));
     }
 
 }

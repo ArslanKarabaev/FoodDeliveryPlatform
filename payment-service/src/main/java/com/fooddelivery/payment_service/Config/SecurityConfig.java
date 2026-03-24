@@ -28,6 +28,7 @@ public class SecurityConfig {
 
                         .requestMatchers("/payments/webhook/**").permitAll()
                         .requestMatchers("/payments/initiate").authenticated()
+                        .requestMatchers("/payments/{id}/refund").hasRole("SUPER_ADMIN")
                         .requestMatchers("/admin/**").hasRole("SUPER_ADMIN")
                         .requestMatchers("/cafe/**").hasRole("CAFE_ADMIN")
                         .anyRequest().authenticated()

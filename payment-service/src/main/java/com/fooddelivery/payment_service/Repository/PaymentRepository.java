@@ -17,4 +17,5 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     List<Payment> findByPayoutStatus(PayoutStatus payoutStatus);
 
+    List<Payment> findByRestaurantId(UUID restaurantId);
 }

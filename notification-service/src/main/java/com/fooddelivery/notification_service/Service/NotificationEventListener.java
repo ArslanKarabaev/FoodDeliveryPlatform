@@ -58,6 +58,27 @@ public class NotificationEventListener {
         }
     }
 
+    @RabbitListener(queues = "order.ready")
+    public void handleOrderReady(Map<String, String> event){
+        log.info("Получено событие order.ready: {}", event);
+        UUID orderId = UUID.fromString(event.get("orderId"));
+        UUID clientId = UUID.fromString(event.get("clientId"));
+
+        try {
+            String email = authServiceClient.getUserEmail(clientId);
+            emailService.sendEmail(
+                    clientId,
+                    email,
+                    "Заказ готов",
+                    "Ваш заказ готов и ожидает курьера.",
+                    "order.ready",
+                    orderId
+            );
+        } catch (Exception e){
+            log.error("Ошибка отправки email: {}", e.getMessage());
+        }
+    }
+
     @RabbitListener(queues = "order.cancelled")
     public void handleOrderCancelled(Map<String, String> event){
         log.info("Получено событие order.cancelled: {}", event);
@@ -80,9 +101,9 @@ public class NotificationEventListener {
         }
     }
 
-    @RabbitListener(queues = "payment.completed")
-    public void handlePaymentCompleted(Map<String, String> event) {
-        log.info("Получено событие payment.completed: {}", event);
+    @RabbitListener(queues = "payment.completed.not")
+    public void handlePaymentCompletedNot(Map<String, String> event) {
+        log.info("Получено событие payment.completed.not: {}", event);
         UUID orderId = UUID.fromString(event.get("orderId"));
         UUID clientId = UUID.fromString(event.get("clientId"));
 
@@ -93,7 +114,7 @@ public class NotificationEventListener {
                     email,
                     "Оплата прошла успешно",
                     "Ваш заказ оплачен! Ресторан уже готовит его.",
-                    "payment.completed",
+                    "payment.completed.not",
                     orderId
             );
         } catch (Exception e) {
@@ -101,9 +122,9 @@ public class NotificationEventListener {
         }
     }
 
-    @RabbitListener(queues = "payment.failed")
+    @RabbitListener(queues = "payment.failed.not")
     public void handlePaymentFailed(Map<String, String> event) {
-        log.info("Получено событие payment.failed: {}", event);
+        log.info("Получено событие payment.failed.not: {}", event);
         UUID orderId = UUID.fromString(event.get("orderId"));
         UUID clientId = UUID.fromString(event.get("clientId"));
 
@@ -114,7 +135,28 @@ public class NotificationEventListener {
                     email,
                     "Оплата не прошла",
                     "К сожалению оплата вашего заказа не прошла. Попробуйте снова.",
-                    "payment.failed",
+                    "payment.failed.not",
+                    orderId
+            );
+        } catch (Exception e) {
+            log.error("Ошибка отправки уведомления: {}", e.getMessage());
+        }
+    }
+
+    @RabbitListener(queues = "payment.refunded.not")
+    public void handlePaymentRefunded(Map<String, String> event) {
+        log.info("Получено событие payment.refunded.not: {}", event);
+        UUID orderId = UUID.fromString(event.get("orderId"));
+        UUID clientId = UUID.fromString(event.get("clientId"));
+
+        try {
+            String email = authServiceClient.getUserEmail(clientId);
+            emailService.sendEmail(
+                    clientId,
+                    email,
+                    "Оплата возвращена",
+                    "Ваша оплата успешно возвращена",
+                    "payment.refunded.not",
                     orderId
             );
         } catch (Exception e) {

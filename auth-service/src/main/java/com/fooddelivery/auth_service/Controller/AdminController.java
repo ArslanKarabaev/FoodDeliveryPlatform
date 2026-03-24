@@ -27,7 +27,7 @@ public class AdminController {
     @PatchMapping("/users/{id}/status")
     public ResponseEntity<String> updateUserStatus(
             @PathVariable UUID id,
-            @PathVariable Boolean active){
+            @RequestParam Boolean active){
         authService.updateUserStatus(id, active);
         return ResponseEntity.ok("Статус обновлён");
     }

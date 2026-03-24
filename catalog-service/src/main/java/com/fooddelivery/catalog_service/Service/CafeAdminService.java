@@ -119,7 +119,7 @@ public class CafeAdminService {
         MenuItem item = menuItemRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Позиция не найдена"));
 
-        item.setName(request.getName());
+        if (request.getName() != null) item.setName(request.getName());
         if (request.getDescription() != null) item.setDescription(request.getDescription());
         if (request.getPrice() != null) item.setPrice(request.getPrice());
         if (request.getWeightGrams() != null) item.setWeightGrams(request.getWeightGrams());
@@ -138,7 +138,7 @@ public class CafeAdminService {
 
     public UUID getCafeIdFromToken(HttpServletRequest request) {
         String token = request.getHeader("Authorization").substring(7);
-        return jwtService.extractUserId(token);
+        return jwtService.extractCafeId(token);
     }
 
     public MediaUploadResponse uploadMedia(MultipartFile file, String type, UUID cafeId) {

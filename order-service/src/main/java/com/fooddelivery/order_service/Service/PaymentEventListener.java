@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -18,10 +19,10 @@ public class PaymentEventListener {
     private final OrderRepository orderRepository;
 
     @RabbitListener(queues = "payment.completed")
-    public void handlePaymentCompleted(String orderIdStr){
-        log.info("Получено событие payment.completed для заказа: {}", orderIdStr);
+    public void handlePaymentCompleted(Map<String, String> event){
+        log.info("Получено событие payment.completed для заказа: {}", event);
 
-        UUID orderId = UUID.fromString(orderIdStr);
+        UUID orderId = UUID.fromString(event.get("orderId"));
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(()-> new RuntimeException("Заказ не найден"));
 
@@ -32,10 +33,10 @@ public class PaymentEventListener {
     }
 
     @RabbitListener(queues = "payment.failed")
-    public void handlePaymentFailed(String orderIdStr){
-        log.info("Получено событие payment.failed  для заказа {}", orderIdStr);
+    public void handlePaymentFailed(Map<String, String> event){
+        log.info("Получено событие payment.failed  для заказа {}", event);
 
-        UUID orderId = UUID.fromString(orderIdStr);
+        UUID orderId = UUID.fromString(event.get("orderId"));
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(()-> new RuntimeException("Заказ не найден"));
 
@@ -47,10 +48,10 @@ public class PaymentEventListener {
     }
 
     @RabbitListener(queues = "payment.refunded")
-    public void handlePaymentRefunded(String orderIdStr) {
-        log.info("Получено событие payment.refunded для заказа: {}", orderIdStr);
+    public void handlePaymentRefunded(Map<String, String> event) {
+        log.info("Получено событие payment.refunded для заказа: {}", event);
 
-        UUID orderId = UUID.fromString(orderIdStr);
+        UUID orderId = UUID.fromString(event.get("orderId"));
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RuntimeException("Заказ не найден"));
 
