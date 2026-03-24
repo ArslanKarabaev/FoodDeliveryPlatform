@@ -1,0 +1,134 @@
+version: 2.1
+
+parameters:
+  docker-compose:
+    type: string
+    default: "/home/aksoft/docker-compose.food-delivery.yml"
+    description: "Docker compose filename"
+  username:
+    type: string
+    default: "aksoft"
+    description: "SSH host username"
+
+jobs:
+  build-services:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - checkout
+      - run:
+          name: Build all services
+          command: |
+            cd auth-service && mvn -B -DskipTests clean package && cd ..
+            cd catalog-service && mvn -B -DskipTests clean package && cd ..
+            cd order-service && mvn -B -DskipTests clean package && cd ..
+            cd payment-service && mvn -B -DskipTests clean package && cd ..
+            cd delivery-service && mvn -B -DskipTests clean package && cd ..
+            cd notification-service && mvn -B -DskipTests clean package && cd ..
+      - persist_to_workspace:
+          root: .
+          paths:
+            - "*/target/*.jar"
+
+  deploy-to-development:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - setup_remote_docker
+      - run:
+          name: Build Docker Images
+          command: |
+            DOCKER_BUILDKIT=1 docker build -t food-delivery-auth:latest ./auth-service
+            DOCKER_BUILDKIT=1 docker build -t food-delivery-catalog:latest ./catalog-service
+            DOCKER_BUILDKIT=1 docker build -t food-delivery-order:latest ./order-service
+            DOCKER_BUILDKIT=1 docker build -t food-delivery-payment:latest ./payment-service
+            DOCKER_BUILDKIT=1 docker build -t food-delivery-delivery:latest ./delivery-service
+            DOCKER_BUILDKIT=1 docker build -t food-delivery-notification:latest ./notification-service
+      - run:
+          name: Compress Docker Images
+          command: |
+            docker save \
+              food-delivery-auth:latest \
+              food-delivery-catalog:latest \
+              food-delivery-order:latest \
+              food-delivery-payment:latest \
+              food-delivery-delivery:latest \
+              food-delivery-notification:latest \
+            | gzip > food-delivery.tar.gz
+      - run: ls -lh
+      - persist_to_workspace:
+          root: .
+          paths:
+            - food-delivery.tar.gz
+
+  transfer-and-run:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: Install SSH And Configure
+          command: |
+            echo $SSH_PRIVATE_KEY_LOCAL | base64 --decode > ./id_rsa
+            chmod 400 id_rsa
+      - run:
+          name: Transfer Files
+          command: |
+            scp -o "StrictHostKeyChecking=no" -i ./id_rsa \
+              ./food-delivery.tar.gz \
+              << pipeline.parameters.username >>@$LOCALHOST:~/
+      - run:
+          name: Transfer Docker Compose
+          command: |
+            scp -o "StrictHostKeyChecking=no" -i ./id_rsa \
+              ./docker-compose.yml \
+              << pipeline.parameters.username >>@$LOCALHOST:<< pipeline.parameters.docker-compose >>
+      - run:
+          name: Stop Remote Docker-Compose
+          command: |
+            ssh -o "StrictHostKeyChecking=no" -i ./id_rsa << pipeline.parameters.username >>@$LOCALHOST '
+            if [ -f << pipeline.parameters.docker-compose >> ]; then
+              docker-compose -f << pipeline.parameters.docker-compose >> down --rmi all
+            else
+              echo "<< pipeline.parameters.docker-compose >> not found"
+            fi
+            '
+      - run:
+          name: Decompress Docker Images | Run Compose
+          command: |
+            ssh -o "StrictHostKeyChecking=no" -i ./id_rsa << pipeline.parameters.username >>@$LOCALHOST '
+            gunzip -c ~/food-delivery.tar.gz | docker load
+            rm ~/food-delivery.tar.gz
+            if [ -f << pipeline.parameters.docker-compose >> ]; then
+              docker-compose -f << pipeline.parameters.docker-compose >> up -d
+            else
+              echo "<< pipeline.parameters.docker-compose >> not found"
+            fi
+            '
+
+workflows:
+  deploy-dev:
+    jobs:
+      - build-services:
+          filters:
+            branches:
+              only:
+                - development
+      - deploy-to-development:
+          requires:
+            - build-services
+          filters:
+            branches:
+              only:
+                - development
+      - transfer-and-run:
+          requires:
+            - deploy-to-development
+          filters:
+            branches:
+              only:
+                - development
