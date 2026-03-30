@@ -71,6 +71,13 @@ jobs:
       - attach_workspace:
           at: .
       - run:
+          name: Plan deployment
+          command: |
+            circleci run release plan "${CIRCLE_JOB}" \
+              --environment-name="default" \
+              --component-name="${CIRCLE_PROJECT_REPONAME}" \
+              --target-version="1.0.${CIRCLE_BUILD_NUM}-${CIRCLE_SHA1:0:7}"
+      - run:
           name: Install SSH And Configure
           command: |
             echo $SSH_PRIVATE_KEY_LOCAL | base64 --decode > ./id_rsa
@@ -109,6 +116,17 @@ jobs:
               echo "<< pipeline.parameters.docker-compose >> not found"
             fi
             '
+      - run:
+          name: Update deployment status to running
+          command: circleci run release update "${CIRCLE_JOB}" --status=RUNNING
+      - run:
+          name: Update deployment status to success
+          command: circleci run release update "${CIRCLE_JOB}" --status=SUCCESS
+          when: on_success
+      - run:
+          name: Update deployment status to failed
+          command: circleci run release update "${CIRCLE_JOB}" --status=FAILED
+          when: on_fail
 
 workflows:
   deploy-dev:
