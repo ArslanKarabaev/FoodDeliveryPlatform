@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -16,7 +17,7 @@ import java.util.UUID;
 public class DeliveryController {
     private final DeliveryService deliveryService;
 
-    @PostMapping("/delivery/qoute")
+    @PostMapping("/delivery/quote")
     public ResponseEntity<DeliveryResponse> getQuote(@Valid @RequestBody CreateDeliveryRequest request) {
         return ResponseEntity.ok(deliveryService.getQuote(request));
     }
@@ -27,10 +28,10 @@ public class DeliveryController {
     }
 
     @PostMapping("/delivery/webhook/yandex")
-    public ResponseEntity<Void> handleWebhook(
-            @RequestParam String deliveryStatus,
-            @RequestParam String status) {
-        deliveryService.handleYandexWebhook(deliveryStatus, status);
+    public ResponseEntity<Void> handleWebhook(@RequestBody Map<String, String> payload) {
+        String yandexDeliveryId = payload.get("id");
+        String status = payload.get("status");
+        deliveryService.handleYandexWebhook(yandexDeliveryId, status);
         return ResponseEntity.ok().build();
     }
 

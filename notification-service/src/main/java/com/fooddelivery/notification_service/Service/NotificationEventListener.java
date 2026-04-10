@@ -213,5 +213,13 @@ public class NotificationEventListener {
         }
     }
 
+    @RabbitListener(queues = "otp.send")
+    public void handleOtpSend(Map<String, String> event) {
+        String phone = event.get("phone");
+        String code = event.get("code");
+        // здесь вызов SMS-провайдера (например, Twilio, SMSC.ru, или локальный КГ провайдер)
+        log.info("Отправка OTP {} на номер {}", code, phone);
+    }
+
 
 }

@@ -8,6 +8,7 @@ import com.fooddelivery.auth_service.Repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -26,28 +27,45 @@ public class AuthService {
     private final RedisTemplate<String, String> redisTemplate;
     private final RabbitTemplate rabbitTemplate;
 
-    public void register(RegisterRequest request){
-        if(userRepository.existsByEmail(request.getEmail())){
+ /*  ВОЗМОЖНО БУДЕТ НЕ НУЖЕН
+
+        public void register(RegisterRequest request){
+        if(request.getEmail() != null && userRepository.existsByEmail(request.getEmail())){
             throw new RuntimeException("Email уже занят");
         }
-        if (request.getPhone() != null && userRepository.existsByPhone(request.getPhone())){
+        if (userRepository.existsByPhone(request.getPhone())){
             throw new RuntimeException("Телефон уже занят");
         }
         User user = userMapper.toEntity(request);
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setActive(true);
         user.setRole(Role.CLIENT);
+        if(request.getName() != null && !request.getName().isBlank()){
+            user.setName(request.getName());
+        }
 
         userRepository.save(user);
-    }
+
+        boolean needsUpdate = false;
+        if(user.getName() == null || user.getName().isBlank()){
+            String shortId = user.getId().toString().substring(0, 8);
+            user.setName("User #" + shortId);
+            needsUpdate = true;
+        }
+
+        if (needsUpdate){
+            userRepository.save(user);
+        }
+
+    }*/
 
     public AuthResponse login(LoginRequest request) {
 
-        User user = userRepository.findByEmail(request.getEmail())
+        User user = userRepository.findByPhone(request.getPhone())
                 .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
 
         if (!user.isActive()) {
-            throw new RuntimeException("account deactivated Аккаунт деактивирован");
+            throw new RuntimeException("Аккаунт деактивирован");
         }
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
@@ -62,10 +80,15 @@ public class AuthService {
                 .refreshToken(refreshToken)
                 .role(user.getRole().name())
                 .userId(user.getId())
+                .forcePasswordChange(user.isForcePasswordChange())
                 .build();
     }
 
     public void logout(String accessToken) {
+        if (!jwtService.isTokenValid(accessToken)) {
+            throw new BadCredentialsException("Invalid token");
+        }
+
         long ttl = jwtService.getTimeUntilExpire(accessToken);
         redisTemplate.opsForValue().set(
                 "blacklist:" + accessToken,
@@ -87,8 +110,8 @@ public class AuthService {
             throw new RuntimeException("Токен инвалидирован");
         }
 
-        String email = jwtService.extractEmail(token);
-        User user = userRepository.findByEmail(email)
+        UUID userId = jwtService.extractUserId(token);
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
 
         String newAccessToken = jwtService.generateAccessToken(user);
@@ -125,14 +148,25 @@ public class AuthService {
     }
 
     public void forgotPassword(ForgotPasswordRequest request){
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(()-> new RuntimeException("Пользователь не найден"));
+
+        if((request.getEmail() == null || request.getEmail().isBlank()) && (request.getPhone() == null || request.getPhone().isBlank())){
+            throw new RuntimeException("Заполните email или номер телефона");
+        }
+
+        User user;
+        if(request.getEmail() != null && !request.getEmail().isBlank()) {
+            user = userRepository.findByEmail(request.getEmail())
+                    .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+        } else {
+            user = userRepository.findByPhone(request.getPhone())
+                    .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+        }
 
         String resetToken = UUID.randomUUID().toString();
 
         redisTemplate.opsForValue().set(
                 "reset:" + resetToken,
-                user.getEmail(),
+                user.getId().toString(),
                 1,
                 TimeUnit.HOURS
         );
@@ -140,26 +174,113 @@ public class AuthService {
         String resetLink = "http://localhost:3000/reset-password?token=" + resetToken;
 
         Map<String, String> event = new HashMap<>();
-        event.put("email", user.getEmail());
         event.put("clientId", user.getId().toString());
         event.put("resetLink", resetLink);
+        if (user.getEmail() != null) {
+            event.put("email", user.getEmail());
+        }
+        if (user.getPhone() != null) {
+            event.put("phone", user.getPhone());
+        }
         rabbitTemplate.convertAndSend("password.reset", event);
     }
 
     public void resetPassword(ResetPasswordRequest request) {
-        String email = (String) redisTemplate.opsForValue().get("reset:" + request.getToken());
+        String userId = redisTemplate.opsForValue().get("reset:" + request.getToken());
 
-        if (email == null) {
+        if (userId == null) {
             throw new RuntimeException("Токен недействителен или истёк");
         }
 
-        User user = userRepository.findByEmail(email)
+        User user = userRepository.findById(UUID.fromString(userId))
                 .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        user.setForcePasswordChange(false);
         userRepository.save(user);
 
         redisTemplate.delete("reset:" + request.getToken());
+    }
+
+    // регистрация юсеров через телефон и код подтвержения
+    public void sendOtp(SendOtpRequest request) {
+        String phone = request.getPhone();
+
+        // Защита от спама — если код уже отправлен и не истёк, не шлём снова
+        Boolean alreadySent = redisTemplate.hasKey("otp:" + phone);
+        if (Boolean.TRUE.equals(alreadySent)) {
+            throw new RuntimeException("Код уже отправлен. Подождите перед повторной отправкой");
+        }
+
+        // Генерируем 4-значный код
+        String code = String.format("%04d", new java.util.Random().nextInt(10000));
+
+        // Сохраняем в Redis на 5 минут
+        redisTemplate.opsForValue().set(
+                "otp:" + phone,
+                code,
+                5,
+                TimeUnit.MINUTES
+        );
+
+        // Отправляем через RabbitMQ → Notification Service
+        Map<String, String> event = new HashMap<>();
+        event.put("phone", phone);
+        event.put("code", code);
+        rabbitTemplate.convertAndSend("otp.send", event);
+    }
+
+    // Шаг 2 — проверить OTP и выдать JWT
+    public AuthResponse verifyOtp(VerifyOtpRequest request) {
+        String phone = request.getPhone();
+        String code = request.getCode();
+
+        // Достаём код из Redis
+        String savedCode = redisTemplate.opsForValue().get("otp:" + phone);
+
+        if (savedCode == null) {
+            throw new RuntimeException("Код истёк или не был отправлен");
+        }
+        if (!savedCode.equals(code)) {
+            throw new RuntimeException("Неверный код");
+        }
+
+        // Код верный — удаляем из Redis
+        redisTemplate.delete("otp:" + phone);
+
+        // Ищем юзера или создаём нового (авторегистрация)
+        User user = userRepository.findByPhone(phone)
+                .orElseGet(() -> createClientByPhone(phone));
+
+        String accessToken = jwtService.generateAccessToken(user);
+        String refreshToken = jwtService.generateRefreshToken(user);
+
+        return AuthResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .role(user.getRole().name())
+                .userId(user.getId())
+                .forcePasswordChange(false)
+                .build();
+    }
+
+    // Вспомогательный — создаём клиента при первом входе
+    private User createClientByPhone(String phone) {
+        User user = User.builder()
+                .phone(phone)
+                .role(Role.CLIENT)
+                .isActive(true)
+                .forcePasswordChange(false)
+                .build();
+
+        userRepository.save(user);
+
+        // Дефолтное имя после получения ID
+        String shortId = user.getId().toString().substring(0, 8);
+        user.setName("User#" + shortId);
+        userRepository.save(user);
+
+        return user;
     }
 
 }

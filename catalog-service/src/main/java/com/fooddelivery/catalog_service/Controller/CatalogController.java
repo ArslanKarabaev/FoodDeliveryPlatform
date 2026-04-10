@@ -1,19 +1,20 @@
 package com.fooddelivery.catalog_service.Controller;
 
+import com.fooddelivery.catalog_service.Dto.CreateReviewRequest;
 import com.fooddelivery.catalog_service.Dto.MenuCategoryResponse;
 import com.fooddelivery.catalog_service.Dto.RestaurantResponse;
-import com.fooddelivery.catalog_service.Entity.Restaurant;
+import com.fooddelivery.catalog_service.Entity.Review;
 import com.fooddelivery.catalog_service.Enum.CuisineType;
 import com.fooddelivery.catalog_service.Service.CatalogService;
+import com.fooddelivery.catalog_service.Service.ReviewService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
@@ -22,6 +23,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class CatalogController {
     private final CatalogService catalogService;
+    private final ReviewService reviewService;
 
     @GetMapping("/restaurants")
     public ResponseEntity<Page<RestaurantResponse>> getRestaurants(
@@ -34,13 +36,26 @@ public class CatalogController {
     }
 
     @GetMapping("/restaurants/{slug}")
-    public ResponseEntity<RestaurantResponse> getRestaurantBySlug(@PathVariable String slug){
+    public ResponseEntity<RestaurantResponse> getRestaurantBySlug(@PathVariable String slug) {
         return ResponseEntity.ok(catalogService.getRestaurantBySlug(slug));
     }
 
     @GetMapping("/restaurants/{id}/menu")
-    public ResponseEntity<List<MenuCategoryResponse>> getMenu(@PathVariable UUID id){
+    public ResponseEntity<List<MenuCategoryResponse>> getMenu(@PathVariable UUID id) {
         return ResponseEntity.ok(catalogService.getMenu(id));
+    }
+
+    @PostMapping("/reviews")
+    public ResponseEntity<String> addReview(
+            @Valid @RequestBody CreateReviewRequest request,
+            @AuthenticationPrincipal UUID clientId) {
+        reviewService.addReview(request, clientId);
+        return ResponseEntity.ok("Отзыв добавлен");
+    }
+
+    @GetMapping("/restaurants/{restaurantId}/reviews")
+    public ResponseEntity<List<Review>> getReviews(@PathVariable UUID restaurantId) {
+        return ResponseEntity.ok(reviewService.getReviews(restaurantId));
     }
 
 }

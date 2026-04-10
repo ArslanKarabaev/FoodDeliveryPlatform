@@ -17,4 +17,5 @@ public class AuthResponse {
     private String refreshToken;
     private String role;
     private UUID userId;
+    private boolean forcePasswordChange;
 }

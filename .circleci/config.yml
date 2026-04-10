@@ -3,7 +3,7 @@ version: 2.1
 parameters:
   docker-compose:
     type: string
-    default: "/home/aksoft/docker-compose.food-delivery.yml"
+    default: "/home/aksoft/compose.yaml"
     description: "Docker compose filename"
   username:
     type: string
