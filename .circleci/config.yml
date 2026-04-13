@@ -144,5 +144,22 @@ jobs:
 
                           echo "✅ Deployment complete!"
                           docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
+                          echo "📋 Recent logs:"
+                                        docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=30
+                                      '
 
-                          echo "📋
+                          workflows:
+                            deploy-dev:
+                              jobs:
+                                - deploy-to-development:
+                                    filters:
+                                      branches:
+                                        only:
+                                          - dev
+                                - transfer-and-run:
+                                    requires:
+                                      - deploy-to-development
+                                    filters:
+                                      branches:
+                                        only:
+                                          - dev
