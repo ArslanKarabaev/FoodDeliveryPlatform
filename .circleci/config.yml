@@ -38,7 +38,7 @@ jobs:
             - maven-deps-
       - run:
           name: Build JAR with Maven
-          command: mvn clean package -DskipTests  # собираем JAR, тесты можно включить убрав -DskipTests
+          command: mvn clean package -DskipTests
       - save_cache:
           paths:
             - ~/.m2
@@ -101,65 +101,68 @@ jobs:
                 echo "Docker is not accessible for user $(whoami). Add user to docker group."
                 exit 1
               fi
-            if [ -f "$COMPOSE_FILE" ]; then
-                            if [ ! -r "$ENV_FILE" ]; then
-                              echo "Environment file $ENV_FILE is missing or not readable"
-                              exit 1
-                            fi
-                            docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down || true
-                          else
-                            echo "$COMPOSE_FILE not found, skipping..."
-                          fi
-                        '
-                  - run:
-                      name: Load Docker Image and Run Compose
-                      command: |
-                        ssh -o "StrictHostKeyChecking=no" -i ./id_rsa << pipeline.parameters.username >>@$LOCALHOST '
-                          echo "📦 Loading Docker image..."
-                          if ! docker info >/dev/null 2>&1; then
-                            echo "Docker is not accessible for user $(whoami). Add user to docker group."
-                            exit 1
-                          fi
 
-                          gunzip -c /tmp/<< pipeline.parameters.docker-image >>.tar.gz | docker load
+              if [ -f "$COMPOSE_FILE" ]; then
+                if [ ! -r "$ENV_FILE" ]; then
+                  echo "Environment file $ENV_FILE is missing or not readable"
+                  exit 1
+                fi
+                docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down || true
+              else
+                echo "$COMPOSE_FILE not found, skipping..."
+              fi
+            '
+      - run:
+          name: Load Docker Image and Run Compose
+          command: |
+            ssh -o "StrictHostKeyChecking=no" -i ./id_rsa << pipeline.parameters.username >>@$LOCALHOST '
+              echo "📦 Loading Docker image..."
+              if ! docker info >/dev/null 2>&1; then
+                echo "Docker is not accessible for user $(whoami). Add user to docker group."
+                exit 1
+              fi
 
-                          echo "🧹 Cleaning up..."
-                          rm /tmp/<< pipeline.parameters.docker-image >>.tar.gz
+              gunzip -c /tmp/<< pipeline.parameters.docker-image >>.tar.gz | docker load
 
-                          echo "🚀 Starting services..."
-                          cd << pipeline.parameters.remote-dir >>
-                          COMPOSE_FILE="<< pipeline.parameters.docker-compose >>"
-                          COMPOSE_PROJECT="<< pipeline.parameters.compose-project-name >>"
-                          ENV_FILE="<< pipeline.parameters.remote-env-file >>"
+              echo "🧹 Cleaning up..."
+              rm /tmp/<< pipeline.parameters.docker-image >>.tar.gz
 
-                          if [ ! -r "$ENV_FILE" ]; then
-                            echo "Environment file $ENV_FILE is missing or not readable"
-                            exit 1
-                          fi
+              echo "🚀 Starting services..."
+              cd << pipeline.parameters.remote-dir >>
+              COMPOSE_FILE="<< pipeline.parameters.docker-compose >>"
+              COMPOSE_PROJECT="<< pipeline.parameters.compose-project-name >>"
+              ENV_FILE="<< pipeline.parameters.remote-env-file >>"
 
-                          docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
+              if [ ! -r "$ENV_FILE" ]; then
+                echo "Environment file $ENV_FILE is missing or not readable"
+                exit 1
+              fi
 
-                          echo "🧹 Removing old images..."
-                          docker image prune -f
+              docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
 
-                          echo "✅ Deployment complete!"
-                          docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
-                          echo "📋 Recent logs:"
-                                        docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=30
-                                      '
+              echo "🧹 Removing old images..."
+              docker image prune -f
 
-                          workflows:
-                            deploy-dev:
-                              jobs:
-                                - deploy-to-development:
-                                    filters:
-                                      branches:
-                                        only:
-                                          - dev
-                                - transfer-and-run:
-                                    requires:
-                                      - deploy-to-development
-                                    filters:
-                                      branches:
-                                        only:
-                                          - dev
+              echo "✅ Deployment complete!"
+              docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
+              echo "📋 Recent logs:"
+              docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=30
+            '
+
+workflows:
+  deploy-dev:
+    jobs:
+      - build-and-package:
+          filters:
+            branches:
+              only:
+                - dev
+                - development
+      - transfer-and-run:
+          requires:
+            - build-and-package
+          filters:
+            branches:
+              only:
+                - dev
+                - development
