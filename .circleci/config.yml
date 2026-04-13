@@ -8,7 +8,7 @@ parameters:
   username:
     type: string
     default: "aksoft"
-    description: "SSH host username"
+    description: "SSH host username new"
 
 jobs:
   build-services:
