@@ -1,68 +1,66 @@
 version: 2.1
 
 parameters:
+  docker-image:
+    type: string
+    default: “jep-jat-service
+    description: "Docker Image name"
   docker-compose:
     type: string
-    default: "/home/aksoft/compose.yaml"
+    default: "docker-compose.compose.yml"
     description: "Docker compose filename"
-  username:
+  compose-project-name:
     type: string
     default: "aksoft"
+    description: "Stable Docker Compose project name"
+  remote-dir:
+    type: string
+    default: "/home/aksoft_jj"
+    description: "Remote directory"
+  remote-env-file:
+    type: string
+    default: "/home/aksoft_jj/aksoft.env"
+    description: "Remote env file for docker-compose"
+  username:
+    type: string
+    default: "aksoft_jj"
     description: "SSH host username"
 
 jobs:
-  build-services:
+  build-and-package:
     docker:
       - image: cimg/openjdk:21.0
     steps:
       - checkout
+      - restore_cache:
+          keys:
+            - maven-deps-{{ checksum "pom.xml" }}
+            - maven-deps-
       - run:
-          name: Build all services
+          name: Build JAR with Maven
+          command: mvn clean package -DskipTests  # собираем JAR, тесты можно включить убрав -DskipTests
+      - save_cache:
+          paths:
+            - ~/.m2
+          key: maven-deps-{{ checksum "pom.xml" }}
+      - setup_remote_docker:
+          version: docker24
+      - run:
+          name: Build Docker Image
           command: |
-            cd auth-service && mvn -B -DskipTests clean package && cd ..
-            cd catalog-service && mvn -B -DskipTests clean package && cd ..
-            cd order-service && mvn -B -DskipTests clean package && cd ..
-            cd payment-service && mvn -B -DskipTests clean package && cd ..
-            cd delivery-service && mvn -B -DskipTests clean package && cd ..
-            cd notification-service && mvn -B -DskipTests clean package && cd ..
+            DOCKER_BUILDKIT=1 docker build -t << pipeline.parameters.docker-image >>:latest .
+      - run:
+          name: Compress Docker Image
+          command: |
+            docker save << pipeline.parameters.docker-image >>:latest | gzip > << pipeline.parameters.docker-image >>.tar.gz
+      - run:
+          name: Check compressed image size
+          command: ls -lh << pipeline.parameters.docker-image >>.tar.gz
       - persist_to_workspace:
           root: .
           paths:
-            - "*/target/*.jar"
-
-  deploy-to-development:
-    docker:
-      - image: cimg/base:stable
-    steps:
-      - checkout
-      - attach_workspace:
-          at: .
-      - setup_remote_docker
-      - run:
-          name: Build Docker Images
-          command: |
-            DOCKER_BUILDKIT=1 docker build -t food-delivery-auth:latest ./auth-service
-            DOCKER_BUILDKIT=1 docker build -t food-delivery-catalog:latest ./catalog-service
-            DOCKER_BUILDKIT=1 docker build -t food-delivery-order:latest ./order-service
-            DOCKER_BUILDKIT=1 docker build -t food-delivery-payment:latest ./payment-service
-            DOCKER_BUILDKIT=1 docker build -t food-delivery-delivery:latest ./delivery-service
-            DOCKER_BUILDKIT=1 docker build -t food-delivery-notification:latest ./notification-service
-      - run:
-          name: Compress Docker Images
-          command: |
-            docker save \
-              food-delivery-auth:latest \
-              food-delivery-catalog:latest \
-              food-delivery-order:latest \
-              food-delivery-payment:latest \
-              food-delivery-delivery:latest \
-              food-delivery-notification:latest \
-            | gzip > food-delivery.tar.gz
-      - run: ls -lh
-      - persist_to_workspace:
-          root: .
-          paths:
-            - food-delivery.tar.gz
+            - << pipeline.parameters.docker-image >>.tar.gz
+            - << pipeline.parameters.docker-compose >>
 
   transfer-and-run:
     docker:
@@ -71,82 +69,80 @@ jobs:
       - attach_workspace:
           at: .
       - run:
-          name: Plan deployment
-          command: |
-            circleci run release plan "${CIRCLE_JOB}" \
-              --environment-name="default" \
-              --component-name="${CIRCLE_PROJECT_REPONAME}" \
-              --target-version="1.0.${CIRCLE_BUILD_NUM}-${CIRCLE_SHA1:0:7}"
-      - run:
-          name: Install SSH And Configure
+          name: Setup SSH Key
           command: |
             echo $SSH_PRIVATE_KEY_LOCAL | base64 --decode > ./id_rsa
             chmod 400 id_rsa
       - run:
-          name: Transfer Files
+          name: Transfer Docker Image
+          no_output_timeout: 30m
           command: |
-            scp -o "StrictHostKeyChecking=no" -i ./id_rsa \
-              ./food-delivery.tar.gz \
-              << pipeline.parameters.username >>@$LOCALHOST:~/
+            echo "📦 Transferring Docker image..."
+            scp -o "StrictHostKeyChecking=no" -i ./id_rsa ./<< pipeline.parameters.docker-image >>.tar.gz << pipeline.parameters.username >>@$LOCALHOST:/tmp/
+            echo "✅ Image transferred"
       - run:
           name: Transfer Docker Compose
           command: |
-            scp -o "StrictHostKeyChecking=no" -i ./id_rsa \
-              ./docker-compose.yml \
-              << pipeline.parameters.username >>@$LOCALHOST:<< pipeline.parameters.docker-compose >>
+            echo "📦 Transferring docker-compose file..."
+            scp -o "StrictHostKeyChecking=no" -i ./id_rsa ./<< pipeline.parameters.docker-compose >> << pipeline.parameters.username >>@$LOCALHOST:<< pipeline.parameters.remote-dir >>/<< pipeline.parameters.docker-compose >>
+            echo "✅ Docker-compose transferred"
       - run:
           name: Stop Remote Docker-Compose
           command: |
             ssh -o "StrictHostKeyChecking=no" -i ./id_rsa << pipeline.parameters.username >>@$LOCALHOST '
-            if [ -f << pipeline.parameters.docker-compose >> ]; then
-              docker-compose -f << pipeline.parameters.docker-compose >> down --rmi all
-            else
-              echo "<< pipeline.parameters.docker-compose >> not found"
-            fi
-            '
-      - run:
-          name: Decompress Docker Images | Run Compose
-          command: |
-            ssh -o "StrictHostKeyChecking=no" -i ./id_rsa << pipeline.parameters.username >>@$LOCALHOST '
-            gunzip -c ~/food-delivery.tar.gz | docker load
-            rm ~/food-delivery.tar.gz
-            if [ -f << pipeline.parameters.docker-compose >> ]; then
-              docker-compose -f << pipeline.parameters.docker-compose >> up -d
-            else
-              echo "<< pipeline.parameters.docker-compose >> not found"
-            fi
-            '
-      - run:
-          name: Update deployment status to running
-          command: circleci run release update "${CIRCLE_JOB}" --status=RUNNING
-      - run:
-          name: Update deployment status to success
-          command: circleci run release update "${CIRCLE_JOB}" --status=SUCCESS
-          when: on_success
-      - run:
-          name: Update deployment status to failed
-          command: circleci run release update "${CIRCLE_JOB}" --status=FAILED
-          when: on_fail
+              echo "🛑 Stopping containers..."
+              cd << pipeline.parameters.remote-dir >>
 
-workflows:
-  deploy-dev:
-    jobs:
-      - build-services:
-          filters:
-            branches:
-              only:
-                - development
-      - deploy-to-development:
-          requires:
-            - build-services
-          filters:
-            branches:
-              only:
-                - development
-      - transfer-and-run:
-          requires:
-            - deploy-to-development
-          filters:
-            branches:
-              only:
-                - development
+              COMPOSE_FILE="<< pipeline.parameters.docker-compose >>"
+              COMPOSE_PROJECT="<< pipeline.parameters.compose-project-name >>"
+              ENV_FILE="<< pipeline.parameters.remote-env-file >>"
+
+              if ! docker info >/dev/null 2>&1; then
+                echo "Docker is not accessible for user $(whoami). Add user to docker group."
+                exit 1
+              fi
+            if [ -f "$COMPOSE_FILE" ]; then
+                            if [ ! -r "$ENV_FILE" ]; then
+                              echo "Environment file $ENV_FILE is missing or not readable"
+                              exit 1
+                            fi
+                            docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down || true
+                          else
+                            echo "$COMPOSE_FILE not found, skipping..."
+                          fi
+                        '
+                  - run:
+                      name: Load Docker Image and Run Compose
+                      command: |
+                        ssh -o "StrictHostKeyChecking=no" -i ./id_rsa << pipeline.parameters.username >>@$LOCALHOST '
+                          echo "📦 Loading Docker image..."
+                          if ! docker info >/dev/null 2>&1; then
+                            echo "Docker is not accessible for user $(whoami). Add user to docker group."
+                            exit 1
+                          fi
+
+                          gunzip -c /tmp/<< pipeline.parameters.docker-image >>.tar.gz | docker load
+
+                          echo "🧹 Cleaning up..."
+                          rm /tmp/<< pipeline.parameters.docker-image >>.tar.gz
+
+                          echo "🚀 Starting services..."
+                          cd << pipeline.parameters.remote-dir >>
+                          COMPOSE_FILE="<< pipeline.parameters.docker-compose >>"
+                          COMPOSE_PROJECT="<< pipeline.parameters.compose-project-name >>"
+                          ENV_FILE="<< pipeline.parameters.remote-env-file >>"
+
+                          if [ ! -r "$ENV_FILE" ]; then
+                            echo "Environment file $ENV_FILE is missing or not readable"
+                            exit 1
+                          fi
+
+                          docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
+
+                          echo "🧹 Removing old images..."
+                          docker image prune -f
+
+                          echo "✅ Deployment complete!"
+                          docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
+
+                          echo "📋
