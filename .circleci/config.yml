@@ -1,10 +1,6 @@
 version: 2.1
 
 parameters:
-  docker-image:
-    type: string
-    default: "jep-jat-service"
-    description: "backend-jepjat"
   docker-compose:
     type: string
     default: "compose.yml"
@@ -26,10 +22,36 @@ parameters:
     default: "aksoft_jj"
     description: "SSH host username"
 
-jobs:
-  build-and-package:
+executors:
+  jdk:
     docker:
       - image: cimg/openjdk:21.0
+  base:
+    docker:
+      - image: cimg/base:stable
+
+commands:
+  build-and-save-image:
+    description: "Build a service Docker image and save it to a tar.gz"
+    parameters:
+      service:
+        type: string
+      image:
+        type: string
+    steps:
+      - run:
+          name: "Build image << parameters.image >>"
+          command: |
+            DOCKER_BUILDKIT=1 docker build -t << parameters.image >>:latest ./<< parameters.service >>
+      - run:
+          name: "Save image << parameters.image >>"
+          command: |
+            docker save << parameters.image >>:latest | gzip > << parameters.image >>.tar.gz
+            ls -lh << parameters.image >>.tar.gz
+
+jobs:
+  build-and-package:
+    executor: jdk
     steps:
       - checkout
       - restore_cache:
@@ -37,34 +59,45 @@ jobs:
             - maven-deps-{{ checksum "pom.xml" }}
             - maven-deps-
       - run:
-          name: Build JAR with Maven
-          command: mvn clean package -DskipTests
+          name: Build all services with Maven
+          command: mvn -B clean package -DskipTests
       - save_cache:
           paths:
             - ~/.m2
           key: maven-deps-{{ checksum "pom.xml" }}
       - setup_remote_docker:
           version: docker24
-      - run:
-          name: Build Docker Image
-          command: |
-            DOCKER_BUILDKIT=1 docker build -t << pipeline.parameters.docker-image >>:latest .
-      - run:
-          name: Compress Docker Image
-          command: |
-            docker save << pipeline.parameters.docker-image >>:latest | gzip > << pipeline.parameters.docker-image >>.tar.gz
-      - run:
-          name: Check compressed image size
-          command: ls -lh << pipeline.parameters.docker-image >>.tar.gz
+      - build-and-save-image:
+          service: auth-service
+          image: food-delivery-auth
+      - build-and-save-image:
+          service: catalog-service
+          image: food-delivery-catalog
+      - build-and-save-image:
+          service: order-service
+          image: food-delivery-order
+      - build-and-save-image:
+          service: payment-service
+          image: food-delivery-payment
+      - build-and-save-image:
+          service: delivery-service
+          image: food-delivery-delivery
+      - build-and-save-image:
+          service: notification-service
+          image: food-delivery-notification
       - persist_to_workspace:
           root: .
           paths:
-            - << pipeline.parameters.docker-image >>.tar.gz
+            - food-delivery-auth.tar.gz
+            - food-delivery-catalog.tar.gz
+            - food-delivery-order.tar.gz
+            - food-delivery-payment.tar.gz
+            - food-delivery-delivery.tar.gz
+            - food-delivery-notification.tar.gz
             - << pipeline.parameters.docker-compose >>
 
   transfer-and-run:
-    docker:
-      - image: cimg/base:stable
+    executor: base
     steps:
       - attach_workspace:
           at: .
@@ -74,22 +107,24 @@ jobs:
             echo $SSH_PRIVATE_KEY_LOCAL | base64 --decode > ./id_rsa
             chmod 400 id_rsa
       - run:
-          name: Transfer Docker Image
+          name: Transfer Docker Images
           no_output_timeout: 30m
           command: |
-            echo "📦 Transferring Docker image..."
-            scp -o "StrictHostKeyChecking=no" -i ./id_rsa ./<< pipeline.parameters.docker-image >>.tar.gz << pipeline.parameters.username >>@$LOCALHOST:/tmp/
-            echo "✅ Image transferred"
+            for img in food-delivery-auth food-delivery-catalog food-delivery-order food-delivery-payment food-delivery-delivery food-delivery-notification; do
+              echo "📦 Transferring $img..."
+              scp -o "StrictHostKeyChecking=no" -i ./id_rsa ./${img}.tar.gz << pipeline.parameters.username >>@$LOCALHOST:/tmp/
+            done
+            echo "✅ All images transferred"
       - run:
           name: Transfer Docker Compose
           command: |
-            echo "📦 Transferring docker-compose file..."
             scp -o "StrictHostKeyChecking=no" -i ./id_rsa ./<< pipeline.parameters.docker-compose >> << pipeline.parameters.username >>@$LOCALHOST:<< pipeline.parameters.remote-dir >>/<< pipeline.parameters.docker-compose >>
             echo "✅ Docker-compose transferred"
       - run:
           name: Stop Remote Docker-Compose
           command: |
             ssh -o "StrictHostKeyChecking=no" -i ./id_rsa << pipeline.parameters.username >>@$LOCALHOST '
+              set -e
               echo "🛑 Stopping containers..."
               cd << pipeline.parameters.remote-dir >>
 
@@ -113,19 +148,20 @@ jobs:
               fi
             '
       - run:
-          name: Load Docker Image and Run Compose
+          name: Load Docker Images and Run Compose
           command: |
             ssh -o "StrictHostKeyChecking=no" -i ./id_rsa << pipeline.parameters.username >>@$LOCALHOST '
-              echo "📦 Loading Docker image..."
+              set -e
               if ! docker info >/dev/null 2>&1; then
                 echo "Docker is not accessible for user $(whoami). Add user to docker group."
                 exit 1
               fi
 
-              gunzip -c /tmp/<< pipeline.parameters.docker-image >>.tar.gz | docker load
-
-              echo "🧹 Cleaning up..."
-              rm /tmp/<< pipeline.parameters.docker-image >>.tar.gz
+              echo "📦 Loading Docker images..."
+              for img in food-delivery-auth food-delivery-catalog food-delivery-order food-delivery-payment food-delivery-delivery food-delivery-notification; do
+                gunzip -c /tmp/${img}.tar.gz | docker load
+                rm /tmp/${img}.tar.gz
+              done
 
               echo "🚀 Starting services..."
               cd << pipeline.parameters.remote-dir >>
@@ -140,7 +176,7 @@ jobs:
 
               docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
 
-              echo "🧹 Removing old images..."
+              echo "🧹 Removing dangling images..."
               docker image prune -f
 
               echo "✅ Deployment complete!"
