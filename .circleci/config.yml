@@ -3,8 +3,8 @@ version: 2.1
 parameters:
   docker-image:
     type: string
-    default: “jep-jat-service
-    description: "Docker Image name"
+    default: "jep-jat-service"
+    description: "backend-jepjat"
   docker-compose:
     type: string
     default: "compose.yml"
