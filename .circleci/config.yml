@@ -7,11 +7,11 @@ parameters:
     description: "Docker Image name"
   docker-compose:
     type: string
-    default: "docker-compose.compose.yml"
+    default: "compose.yml"
     description: "Docker compose filename"
   compose-project-name:
     type: string
-    default: "aksoft"
+    default: "aksoft_jj"
     description: "Stable Docker Compose project name"
   remote-dir:
     type: string
