@@ -149,6 +149,7 @@ jobs:
             '
       - run:
           name: Load Docker Images and Run Compose
+          no_output_timeout: 20m
           command: |
             ssh -o "StrictHostKeyChecking=no" -i ./id_rsa << pipeline.parameters.username >>@$LOCALHOST '
               set -e
