@@ -17,4 +17,5 @@ public class UpdateRestaurantRequest {
     private BigDecimal minOrderAmount;
     private Double deliveryZoneRadiusKm;
     private Map<String, String> workingHours;
+    private Integer estimatedDeliveryMinutes;
 }

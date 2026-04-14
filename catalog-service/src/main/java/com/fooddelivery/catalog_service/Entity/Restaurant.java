@@ -84,4 +84,6 @@ public class Restaurant {
 
     private Double averageRating = 0.0;
     private Integer reviewCount = 0;
+
+    private Integer estimatedDeliveryMinutes;
 }

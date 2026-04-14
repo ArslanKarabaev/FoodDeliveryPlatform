@@ -1,5 +1,6 @@
 package com.fooddelivery.catalog_service.Service;
 
+import com.fooddelivery.catalog_service.Client.OrderServiceClient;
 import com.fooddelivery.catalog_service.Dto.MenuCategoryResponse;
 import com.fooddelivery.catalog_service.Dto.RestaurantResponse;
 import com.fooddelivery.catalog_service.Entity.Restaurant;
@@ -9,6 +10,7 @@ import com.fooddelivery.catalog_service.Repository.MenuCategoryRepository;
 import com.fooddelivery.catalog_service.Repository.RestaurantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
@@ -22,22 +24,23 @@ public class CatalogService {
     private final RestaurantRepository restaurantRepository;
     private final MenuCategoryRepository menuCategoryRepository;
     private final RestaurantMapper restaurantMapper;
+    private final OrderServiceClient orderServiceClient;
 
-    public Page<RestaurantResponse> getRestaurants(String city, CuisineType cuisineType, Pageable pageable){
-        if(city != null && cuisineType != null) {
-            return restaurantRepository.findByIsActiveTrueAndCity(city, pageable).map(restaurantMapper::toResponse);
-        } else if (city != null) {
-            return restaurantRepository.findByIsActiveTrueAndCity(city, pageable).map(restaurantMapper::toResponse);
-        } else if (cuisineType != null) {
-            return restaurantRepository.findByIsActiveTrueAndCuisineType(cuisineType, pageable).map(restaurantMapper::toResponse);
-        }
-        return restaurantRepository.findByIsActiveTrue(pageable).map(restaurantMapper::toResponse);
+    public Page<RestaurantResponse> getRestaurants(
+            String city,
+            CuisineType cuisineType,
+            Double minRating,
+            Integer maxDeliveryTime,
+            Pageable pageable) {
 
+        return restaurantRepository.findWithFilters(
+                        city, cuisineType, minRating, maxDeliveryTime, pageable)
+                .map(restaurantMapper::toResponse);
     }
 
-    public RestaurantResponse getRestaurantBySlug(String slug){
+    public RestaurantResponse getRestaurantBySlug(String slug) {
         Restaurant restaurant = restaurantRepository.findBySlug(slug)
-                .orElseThrow(()-> new RuntimeException("Ресторан не найден"));
+                .orElseThrow(() -> new RuntimeException("Ресторан не найден"));
         return restaurantMapper.toResponse(restaurant);
     }
 
@@ -48,4 +51,30 @@ public class CatalogService {
                 .collect(Collectors.toList());
     }
 
+    public List<RestaurantResponse> getRecommendations(UUID clientId) {
+        List<UUID> topRestaurantIds = orderServiceClient.getTopRestaurantIds(clientId);
+
+        if (topRestaurantIds.isEmpty()) {
+            return restaurantRepository
+                    .findTop10ByIsActiveTrueOrderByAverageRatingDesc()
+                    .stream()
+                    .map(restaurantMapper::toResponse)
+                    .collect(Collectors.toList());
+        }
+
+        List<CuisineType> favouriteCuisines = restaurantRepository
+                .findAllById(topRestaurantIds)
+                .stream()
+                .map(Restaurant::getCuisineType)
+                .distinct()
+                .collect(Collectors.toList());
+
+        return restaurantRepository
+                .findRecommended(favouriteCuisines,
+                        topRestaurantIds,
+                        PageRequest.of(0, 10))
+                .stream()
+                .map(restaurantMapper::toResponse)
+                .collect(Collectors.toList());
+    }
 }

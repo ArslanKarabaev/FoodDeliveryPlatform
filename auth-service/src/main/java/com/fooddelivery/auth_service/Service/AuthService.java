@@ -11,6 +11,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -26,6 +27,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final RedisTemplate<String, String> redisTemplate;
     private final RabbitTemplate rabbitTemplate;
+    private final StorageService storageService;
 
  /*  ВОЗМОЖНО БУДЕТ НЕ НУЖЕН
 
@@ -124,8 +126,8 @@ public class AuthService {
                 .build();
     }
 
-    public void createCafeAdmin(CreateCafeAdminRequest request){
-        if(userRepository.existsByEmail(request.getEmail())){
+    public void createCafeAdmin(CreateCafeAdminRequest request) {
+        if (userRepository.existsByEmail(request.getEmail())) {
             throw new RuntimeException("Email уже используется");
         }
 
@@ -140,21 +142,21 @@ public class AuthService {
         userRepository.save(user);
     }
 
-    public void updateUserStatus(UUID userId, boolean active){
+    public void updateUserStatus(UUID userId, boolean active) {
         User user = userRepository.findById(userId)
-                .orElseThrow(()-> new RuntimeException("Пользователь не найден"));
+                .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
         user.setActive(active);
         userRepository.save(user);
     }
 
-    public void forgotPassword(ForgotPasswordRequest request){
+    public void forgotPassword(ForgotPasswordRequest request) {
 
-        if((request.getEmail() == null || request.getEmail().isBlank()) && (request.getPhone() == null || request.getPhone().isBlank())){
+        if ((request.getEmail() == null || request.getEmail().isBlank()) && (request.getPhone() == null || request.getPhone().isBlank())) {
             throw new RuntimeException("Заполните email или номер телефона");
         }
 
         User user;
-        if(request.getEmail() != null && !request.getEmail().isBlank()) {
+        if (request.getEmail() != null && !request.getEmail().isBlank()) {
             user = userRepository.findByEmail(request.getEmail())
                     .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
         } else {
@@ -206,16 +208,13 @@ public class AuthService {
     public void sendOtp(SendOtpRequest request) {
         String phone = request.getPhone();
 
-        // Защита от спама — если код уже отправлен и не истёк, не шлём снова
         Boolean alreadySent = redisTemplate.hasKey("otp:" + phone);
         if (Boolean.TRUE.equals(alreadySent)) {
             throw new RuntimeException("Код уже отправлен. Подождите перед повторной отправкой");
         }
 
-        // Генерируем 4-значный код
         String code = String.format("%04d", new java.util.Random().nextInt(10000));
 
-        // Сохраняем в Redis на 5 минут
         redisTemplate.opsForValue().set(
                 "otp:" + phone,
                 code,
@@ -223,19 +222,16 @@ public class AuthService {
                 TimeUnit.MINUTES
         );
 
-        // Отправляем через RabbitMQ → Notification Service
         Map<String, String> event = new HashMap<>();
         event.put("phone", phone);
         event.put("code", code);
         rabbitTemplate.convertAndSend("otp.send", event);
     }
 
-    // Шаг 2 — проверить OTP и выдать JWT
     public AuthResponse verifyOtp(VerifyOtpRequest request) {
         String phone = request.getPhone();
         String code = request.getCode();
 
-        // Достаём код из Redis
         String savedCode = redisTemplate.opsForValue().get("otp:" + phone);
 
         if (savedCode == null) {
@@ -245,10 +241,8 @@ public class AuthService {
             throw new RuntimeException("Неверный код");
         }
 
-        // Код верный — удаляем из Redis
         redisTemplate.delete("otp:" + phone);
 
-        // Ищем юзера или создаём нового (авторегистрация)
         User user = userRepository.findByPhone(phone)
                 .orElseGet(() -> createClientByPhone(phone));
 
@@ -264,7 +258,6 @@ public class AuthService {
                 .build();
     }
 
-    // Вспомогательный — создаём клиента при первом входе
     private User createClientByPhone(String phone) {
         User user = User.builder()
                 .phone(phone)
@@ -275,7 +268,6 @@ public class AuthService {
 
         userRepository.save(user);
 
-        // Дефолтное имя после получения ID
         String shortId = user.getId().toString().substring(0, 8);
         user.setName("User#" + shortId);
         userRepository.save(user);
@@ -283,4 +275,89 @@ public class AuthService {
         return user;
     }
 
+    public ProfileResponse getProfile(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+
+        return ProfileResponse.builder()
+                .id(user.getId())
+                .name(user.getName())
+                .phone(user.getPhone())
+                .email(user.getEmail())
+                .avatarUrl(user.getAvatarUrl())
+                .role(user.getRole().name())
+                .build();
+    }
+
+    public ProfileResponse updateProfile(UUID userId, UpdateProfileRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+
+        if (request.getName() != null && !request.getName().isBlank()) {
+            user.setName(request.getName());
+        }
+
+        if (request.getEmail() != null && !request.getEmail().isBlank()) {
+            if (!request.getEmail().equals(user.getEmail()) &&
+                    userRepository.existsByEmail(request.getEmail())) {
+                throw new RuntimeException("Email уже занят");
+            }
+            user.setEmail(request.getEmail());
+        }
+
+        if (request.getPhone() != null && !request.getPhone().isBlank()) {
+            if (!request.getPhone().equals(user.getPhone()) &&
+                    userRepository.existsByPhone(request.getPhone())) {
+                throw new RuntimeException("Телефон уже занят");
+            }
+            user.setPhone(request.getPhone());
+        }
+
+        if (request.getCurrentPassword() != null && !request.getCurrentPassword().isBlank()) {
+            if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPasswordHash())) {
+                throw new RuntimeException("Неверный текущий пароль");
+            }
+            if (request.getNewPassword() == null || request.getNewPassword().isBlank()) {
+                throw new RuntimeException("Введите новый пароль");
+            }
+            if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+                throw new RuntimeException("Пароли не совпадают");
+            }
+            user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        }
+
+        userRepository.save(user);
+
+        return ProfileResponse.builder()
+                .id(user.getId())
+                .name(user.getName())
+                .phone(user.getPhone())
+                .email(user.getEmail())
+                .avatarUrl(user.getAvatarUrl())
+                .role(user.getRole().name())
+                .build();
+    }
+
+    public ProfileResponse updateAvatar(UUID userId, MultipartFile file) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+
+        // Удаляем старый аватар если есть
+        if (user.getAvatarUrl() != null) {
+            storageService.deleteFile(user.getAvatarUrl());
+        }
+
+        String avatarUrl = storageService.uploadFile(file, "avatars");
+        user.setAvatarUrl(avatarUrl);
+        userRepository.save(user);
+
+        return ProfileResponse.builder()
+                .id(user.getId())
+                .name(user.getName())
+                .phone(user.getPhone())
+                .email(user.getEmail())
+                .avatarUrl(user.getAvatarUrl())
+                .role(user.getRole().name())
+                .build();
+    }
 }

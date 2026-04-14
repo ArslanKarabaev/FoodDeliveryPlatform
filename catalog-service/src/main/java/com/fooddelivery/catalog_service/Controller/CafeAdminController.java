@@ -73,9 +73,8 @@ public class CafeAdminController {
     @PostMapping(value = "/media/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<MediaUploadResponse> uploadMedia(
             @RequestParam MultipartFile file,
-            @RequestParam String type,
-            @RequestHeader("X-Cafe-Id") UUID cafeId){
-        MediaUploadResponse response = cafeAdminService.uploadMedia(file, type, cafeId);
+            @RequestParam String type){
+        MediaUploadResponse response = cafeAdminService.uploadMedia(file, type);
         return ResponseEntity.ok(response);
     }
 
@@ -84,8 +83,9 @@ public class CafeAdminController {
             @RequestParam MultipartFile file,
             @RequestParam String name,
             @RequestParam(required = false) String expiryDate,
-            @RequestHeader("X-Cafe-Id") UUID cafeId) {
+            HttpServletRequest httpRequest) {
 
+        UUID cafeId = cafeAdminService.getCafeIdFromToken(httpRequest);
         MediaUploadResponse response = cafeAdminService.uploadCertificate(file, name, expiryDate, cafeId);
         return ResponseEntity.ok(response);
     }

@@ -22,4 +22,5 @@ public class CreateReviewRequest {
 
     @Size(max = 1000)
     private String comment;
+    private UUID menuItemId;
 }

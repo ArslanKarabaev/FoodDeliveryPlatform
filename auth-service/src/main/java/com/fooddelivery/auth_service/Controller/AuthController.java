@@ -2,22 +2,21 @@ package com.fooddelivery.auth_service.Controller;
 
 import com.fooddelivery.auth_service.Dto.*;
 import com.fooddelivery.auth_service.Service.AuthService;
+import com.fooddelivery.auth_service.Service.JwtService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
 public class AuthController {
     private final AuthService authService;
-
-//    @PostMapping("/register")
-//    public ResponseEntity<String> register(@Valid @RequestBody RegisterRequest request){
-//    authService.register(request);
-//    return ResponseEntity.ok("Регистрация успешна");
-//    }
+    private final JwtService jwtService;
 
     @PostMapping("/send-otp")
     public ResponseEntity<String> sendOtp(
@@ -70,6 +69,32 @@ public class AuthController {
             @Valid @RequestBody ResetPasswordRequest request) {
         authService.resetPassword(request);
         return ResponseEntity.ok("Пароль изменён");
+    }
+
+    @GetMapping("/profile")
+    public ResponseEntity<ProfileResponse> getProfile(
+            @RequestHeader("Authorization") String authHeader) {
+        String token = authHeader.substring(7);
+        UUID userId = jwtService.extractUserId(token);
+        return ResponseEntity.ok(authService.getProfile(userId));
+    }
+
+    @PatchMapping("/profile")
+    public ResponseEntity<ProfileResponse> updateProfile(
+            @RequestHeader("Authorization") String authHeader,
+            @Valid @RequestBody UpdateProfileRequest request) {
+        String token = authHeader.substring(7);
+        UUID userId = jwtService.extractUserId(token);
+        return ResponseEntity.ok(authService.updateProfile(userId, request));
+    }
+
+    @PostMapping("/profile/avatar")
+    public ResponseEntity<ProfileResponse> uploadAvatar(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam("file") MultipartFile file) {
+        String token = authHeader.substring(7);
+        UUID userId = jwtService.extractUserId(token);
+        return ResponseEntity.ok(authService.updateAvatar(userId, file));
     }
 
 

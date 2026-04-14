@@ -14,12 +14,18 @@ import java.util.UUID;
 public interface ReviewRepository extends JpaRepository<Review, UUID> {
     boolean existsByClientIdAndRestaurantId(UUID clientId, UUID restaurantId);
 
-    List<Review> findByRestaurantIdOrderByCreatedAtDesc(UUID restaurantId);
+    List<Review> findByRestaurantIdAndMenuItemIdIsNullOrderByCreatedAtDesc(UUID restaurantId);
 
     Integer countByRestaurantId(UUID restaurantId);
 
     @Query("SELECT AVG(r.rating) FROM Review r WHERE r.restaurantId = :restaurantId")
     Double calculateAverageRating(@Param("restaurantId") UUID restaurantId);
+
+    boolean existsByClientIdAndMenuItemIdAndOrderId(UUID clientId, UUID menuItemId, UUID orderId);
+    List<Review> findByMenuItemIdOrderByCreatedAtDesc(UUID menuItemId);
+
+    @Query("SELECT AVG(r.rating) FROM Review r WHERE r.menuItemId = :menuItemId")
+    Double calculateAverageRatingForItem(@Param("menuItemId") UUID menuItemId);
 
 
 }

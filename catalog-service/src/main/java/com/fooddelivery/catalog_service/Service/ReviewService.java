@@ -17,15 +17,20 @@ public class ReviewService {
 
     private final ReviewRepository reviewRepository;
     private final RestaurantRepository restaurantRepository;
+    public void addReview(CreateReviewRequest request, UUID clientId) {
+        if (request.getMenuItemId() != null) {
+            addMenuItemReview(request, clientId);
+        } else {
+            addRestaurantReview(request, clientId);
+        }
+    }
 
-    public void addReview(CreateReviewRequest request, UUID clientId){
-        if(reviewRepository.existsByClientIdAndRestaurantId(clientId,request.getRestaurantId())){
+    private void addRestaurantReview(CreateReviewRequest request, UUID clientId) {
+        if (reviewRepository.existsByClientIdAndRestaurantId(clientId, request.getRestaurantId())) {
             throw new RuntimeException("Вы уже оставили отзыв на это заведение");
         }
 
-        if (request.getRating() < 1 || request.getRating() > 5){
-            throw new RuntimeException("Рейтинг должен быть от 1 до 5");
-        }
+        validateRating(request.getRating());
 
         Review review = Review.builder()
                 .clientId(clientId)
@@ -36,11 +41,30 @@ public class ReviewService {
                 .build();
 
         reviewRepository.save(review);
-
-        recalculateRating(request.getRestaurantId());
+        recalculateRestaurantRating(request.getRestaurantId());
     }
 
-    private void recalculateRating(UUID restaurantId) {
+    private void addMenuItemReview(CreateReviewRequest request, UUID clientId) {
+        if (reviewRepository.existsByClientIdAndMenuItemIdAndOrderId(
+                clientId, request.getMenuItemId(), request.getOrderId())) {
+            throw new RuntimeException("Вы уже оставили отзыв на это блюдо");
+        }
+
+        validateRating(request.getRating());
+
+        Review review = Review.builder()
+                .clientId(clientId)
+                .restaurantId(request.getRestaurantId())
+                .orderId(request.getOrderId())
+                .menuItemId(request.getMenuItemId())
+                .rating(request.getRating())
+                .comment(request.getComment())
+                .build();
+
+        reviewRepository.save(review);
+    }
+
+    private void recalculateRestaurantRating(UUID restaurantId) {
         Double avg = reviewRepository.calculateAverageRating(restaurantId);
         Integer count = reviewRepository.countByRestaurantId(restaurantId);
 
@@ -52,8 +76,17 @@ public class ReviewService {
         restaurantRepository.save(restaurant);
     }
 
-    public List<Review> getReviews(UUID restaurantId) {
-        return reviewRepository.findByRestaurantIdOrderByCreatedAtDesc(restaurantId);
+    private void validateRating(Integer rating) {
+        if (rating < 1 || rating > 5) {
+            throw new RuntimeException("Рейтинг должен быть от 1 до 5");
+        }
     }
 
+    public List<Review> getRestaurantReviews(UUID restaurantId) {
+        return reviewRepository.findByRestaurantIdAndMenuItemIdIsNullOrderByCreatedAtDesc(restaurantId);
+    }
+
+    public List<Review> getMenuItemReviews(UUID menuItemId) {
+        return reviewRepository.findByMenuItemIdOrderByCreatedAtDesc(menuItemId);
+    }
 }

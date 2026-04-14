@@ -14,7 +14,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Component
@@ -45,6 +47,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String role = jwtService.extractRole(token);
         UUID userId = jwtService.extractUserId(token);
+
+        Map<String, Object> principal = new HashMap<>();
+        principal.put("userId", userId);
+
+        if ("CAFE_ADMIN".equals(role)) {
+            try {
+                UUID cafeId = jwtService.extractCafeId(token);
+                principal.put("cafeId", cafeId);
+            } catch (Exception e) {
+                // не кафе-админ игнорится
+            }
+        }
 
         UsernamePasswordAuthenticationToken authToken =
                 new UsernamePasswordAuthenticationToken(

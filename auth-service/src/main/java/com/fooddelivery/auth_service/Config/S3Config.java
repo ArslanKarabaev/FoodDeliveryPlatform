@@ -1,4 +1,4 @@
-package com.fooddelivery.catalog_service.Config;
+package com.fooddelivery.auth_service.Config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;

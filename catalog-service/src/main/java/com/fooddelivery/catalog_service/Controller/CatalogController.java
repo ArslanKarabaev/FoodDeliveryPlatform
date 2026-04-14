@@ -12,11 +12,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -29,10 +31,21 @@ public class CatalogController {
     public ResponseEntity<Page<RestaurantResponse>> getRestaurants(
             @RequestParam(required = false) String city,
             @RequestParam(required = false) CuisineType cuisineType,
+            @RequestParam(required = false) Double minRating,
+            @RequestParam(required = false) Integer maxDeliveryTime,
+            @RequestParam(required = false) String sortBy,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Pageable pageable = PageRequest.of(page, size);
-        return ResponseEntity.ok(catalogService.getRestaurants(city, cuisineType, pageable));
+
+        Sort sort = switch (sortBy != null ? sortBy : "") {
+            case "rating" -> Sort.by(Sort.Direction.DESC, "averageRating");
+            case "deliveryTime" -> Sort.by(Sort.Direction.ASC, "estimatedDeliveryMinutes");
+            default -> Sort.by(Sort.Direction.DESC, "createdAt");
+        };
+
+        Pageable pageable = PageRequest.of(page, size, sort);
+        return ResponseEntity.ok(catalogService.getRestaurants(
+                city, cuisineType, minRating, maxDeliveryTime, pageable));
     }
 
     @GetMapping("/restaurants/{slug}")
@@ -48,14 +61,28 @@ public class CatalogController {
     @PostMapping("/reviews")
     public ResponseEntity<String> addReview(
             @Valid @RequestBody CreateReviewRequest request,
-            @AuthenticationPrincipal UUID clientId) {
+            @AuthenticationPrincipal Map<String, Object> principal) {
+        UUID clientId = (UUID) principal.get("userId");
         reviewService.addReview(request, clientId);
         return ResponseEntity.ok("Отзыв добавлен");
     }
 
     @GetMapping("/restaurants/{restaurantId}/reviews")
-    public ResponseEntity<List<Review>> getReviews(@PathVariable UUID restaurantId) {
-        return ResponseEntity.ok(reviewService.getReviews(restaurantId));
+    public ResponseEntity<List<Review>> getRestaurantReviews(@PathVariable UUID restaurantId) {
+        return ResponseEntity.ok(reviewService.getRestaurantReviews(restaurantId));
+    }
+
+    @GetMapping("/menu-items/{menuItemId}/reviews")
+    public ResponseEntity<List<Review>> getMenuItemReviews(@PathVariable UUID menuItemId) {
+        return ResponseEntity.ok(reviewService.getMenuItemReviews(menuItemId));
+    }
+
+    @GetMapping("/restaurants/recommended")
+    public ResponseEntity<List<RestaurantResponse>> getRecommendations(
+            @AuthenticationPrincipal Map<String, Object> principal) {
+
+        UUID clientId = (UUID) principal.get("userId");
+        return ResponseEntity.ok(catalogService.getRecommendations(clientId));
     }
 
 }

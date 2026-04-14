@@ -24,44 +24,24 @@ public class CafeAdminService {
     private final MenuItemRepository menuItemRepository;
     private final RestaurantMapper restaurantMapper;
     private final JwtService jwtService;
-    private final S3Service s3Service;
+    private final StorageService storageService;
 
     public RestaurantResponse updateProfile(UUID cafeId, UpdateRestaurantRequest request) {
         Restaurant restaurant = restaurantRepository.findById(cafeId)
                 .orElseThrow(() -> new RuntimeException("Ресторан не найден"));
-        if (request.getDescription() != null) {
-            restaurant.setDescription(request.getDescription());
-        }
-        if (request.getAddress() != null) {
-            restaurant.setAddress(request.getAddress());
-        }
-        if (request.getCity() != null) {
-            restaurant.setCity(request.getCity());
-        }
-        if (request.getLatitude() != null) {
-            restaurant.setLatitude(request.getLatitude());
-        }
-        if (request.getLongitude() != null) {
-            restaurant.setLongitude(request.getLongitude());
-        }
-        if (request.getPhone() != null) {
-            restaurant.setPhone(request.getPhone());
-        }
-        if (request.getEmail() != null) {
-            restaurant.setEmail(request.getEmail());
-        }
-        if (request.getMinOrderAmount() != null) {
-            restaurant.setMinOrderAmount(request.getMinOrderAmount());
-        }
-        if (request.getDeliveryZoneRadiusKm() != null) {
-            restaurant.setDeliveryZoneRadiusKm(request.getDeliveryZoneRadiusKm());
-        }
-        if (request.getWorkingHours() != null) {
-            restaurant.setWorkingHours(request.getWorkingHours());
-        }
+        if (request.getDescription() != null) restaurant.setDescription(request.getDescription());
+        if (request.getAddress() != null) restaurant.setAddress(request.getAddress());
+        if (request.getCity() != null) restaurant.setCity(request.getCity());
+        if (request.getLatitude() != null) restaurant.setLatitude(request.getLatitude());
+        if (request.getLongitude() != null) restaurant.setLongitude(request.getLongitude());
+        if (request.getPhone() != null) restaurant.setPhone(request.getPhone());
+        if (request.getEmail() != null) restaurant.setEmail(request.getEmail());
+        if (request.getMinOrderAmount() != null) restaurant.setMinOrderAmount(request.getMinOrderAmount());
+        if (request.getDeliveryZoneRadiusKm() != null) restaurant.setDeliveryZoneRadiusKm(request.getDeliveryZoneRadiusKm());
+        if (request.getWorkingHours() != null) restaurant.setWorkingHours(request.getWorkingHours());
+        if (request.getEstimatedDeliveryMinutes() != null) restaurant.setEstimatedDeliveryMinutes(request.getEstimatedDeliveryMinutes());
 
         return restaurantMapper.toResponse(restaurantRepository.save(restaurant));
-
     }
 
     public MenuCategoryResponse createCategory(UUID cafeId, CreateCategoryRequest request) {
@@ -141,32 +121,31 @@ public class CafeAdminService {
         return jwtService.extractCafeId(token);
     }
 
-    public MediaUploadResponse uploadMedia(MultipartFile file, String type, UUID cafeId) {
+    public MediaUploadResponse uploadMedia(MultipartFile file, String type) {
         validateImageFile(file);
 
         String folder = switch (type) {
             case "logo" -> "logos";
             case "cover" -> "covers";
             case "menu-item" -> "menu-items";
-            default ->
-                    throw new IllegalArgumentException("Неверный тип " + type + ". Доступно только logo, cover, menu-item");
+            default -> throw new IllegalArgumentException(
+                    "Неверный тип " + type + ". Доступно только logo, cover, menu-item");
         };
 
-        String url = s3Service.upload(file, folder);
+        String url = storageService.uploadFile(file, folder);
         return new MediaUploadResponse(url, type);
     }
 
-    public MediaUploadResponse uploadCertificate(MultipartFile file, String name, String expiryDate, UUID cafeId) {
+    public MediaUploadResponse uploadCertificate(MultipartFile file, String name,
+                                                 String expiryDate, UUID cafeId) {
         validateFileSize(file, 10 * 1024 * 1024);
-        String url = s3Service.upload(file, "certificates");
+        String url = storageService.uploadFile(file, "certificates");
 
         Restaurant restaurant = restaurantRepository.findById(cafeId)
-                .orElseThrow(()-> new RuntimeException("Ресторан не найден"));
+                .orElseThrow(() -> new RuntimeException("Ресторан не найден"));
 
         List<Map<String, String>> certificates = restaurant.getCertificates();
-        if(certificates == null){
-            certificates = new ArrayList<>();
-        }
+        if (certificates == null) certificates = new ArrayList<>();
 
         Map<String, String> cert = new HashMap<>();
         cert.put("name", name);
@@ -181,25 +160,21 @@ public class CafeAdminService {
         return new MediaUploadResponse(url, "certificate");
     }
 
-
     private void validateImageFile(MultipartFile file) {
-    long maxSize = 5 * 1024 * 1024;
-    validateFileSize(file, maxSize);
-
-    String contentType = file.getContentType();
-    if(contentType == null || !contentType.startsWith("image/")){
-        throw new IllegalArgumentException("Разрешены только изображения (jpg, png, webp)");
+        validateFileSize(file, 5 * 1024 * 1024);
+        String contentType = file.getContentType();
+        if (contentType == null || !contentType.startsWith("image/")) {
+            throw new IllegalArgumentException("Разрешены только изображения (jpg, png, webp)");
         }
     }
 
     private void validateFileSize(MultipartFile file, long maxBytes) {
-        if(file.isEmpty()){
+        if (file.isEmpty()) {
             throw new IllegalArgumentException("Файл не может быть пустым");
         }
-
-        if(file.getSize() > maxBytes){
-            throw new IllegalArgumentException("Файл слишком большой. Максимум: " + (maxBytes / 1024 / 1024) + " MB");
+        if (file.getSize() > maxBytes) {
+            throw new IllegalArgumentException(
+                    "Файл слишком большой. Максимум: " + (maxBytes / 1024 / 1024) + " MB");
         }
     }
-
 }
