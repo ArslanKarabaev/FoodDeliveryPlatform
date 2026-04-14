@@ -20,6 +20,7 @@ public class DataInitializer implements CommandLineRunner {
         if (!userRepository.existsByEmail("admin@fooddelivery.com")) {
             User superAdmin = User.builder()
                     .email("admin@fooddelivery.com")
+                    .name("admin")
                     .passwordHash(passwordEncoder.encode("Admin123!"))
                     .role(Role.SUPER_ADMIN)
                     .isActive(true)

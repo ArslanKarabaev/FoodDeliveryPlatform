@@ -32,6 +32,11 @@ public class RabbitMQConfig {
     }
 
     @Bean
+    public Queue deliveryCreateRequestQueue() {
+        return new Queue("delivery.create.request", true); // true = durable
+    }
+
+    @Bean
     public Queue deliveryCreatedQueue(){ return QueueBuilder.durable("delivery.created").build(); }
 
     @Bean

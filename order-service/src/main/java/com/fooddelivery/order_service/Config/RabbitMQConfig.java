@@ -70,4 +70,9 @@ public class RabbitMQConfig {
     public Queue orderReadyQueue() {
         return QueueBuilder.durable("order.ready").build();
     }
+
+    @Bean
+    public Queue deliveryCreateRequestQueue() {
+        return QueueBuilder.durable("delivery.create.request").build();
+    }
 }

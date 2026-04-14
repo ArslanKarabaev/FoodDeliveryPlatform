@@ -1,0 +1,205 @@
+version: 2.1
+
+parameters:
+  docker-compose:
+    type: string
+    default: "compose.yml"
+    description: "Docker compose filename"
+  compose-project-name:
+    type: string
+    default: "aksoft_jj"
+    description: "Stable Docker Compose project name"
+  remote-dir:
+    type: string
+    default: "/home/aksoft_jj"
+    description: "Remote directory"
+  remote-env-file:
+    type: string
+    default: "/home/aksoft_jj/aksoft.env"
+    description: "Remote env file for docker-compose"
+  username:
+    type: string
+    default: "aksoft_jj"
+    description: "SSH host username"
+
+executors:
+  jdk:
+    docker:
+      - image: cimg/openjdk:21.0
+  base:
+    docker:
+      - image: cimg/base:stable
+
+commands:
+  build-and-save-image:
+    description: "Build a service Docker image and save it to a tar.gz"
+    parameters:
+      service:
+        type: string
+      image:
+        type: string
+    steps:
+      - run:
+          name: "Build image << parameters.image >>"
+          command: |
+            DOCKER_BUILDKIT=1 docker build -t << parameters.image >>:latest ./<< parameters.service >>
+      - run:
+          name: "Save image << parameters.image >>"
+          command: |
+            docker save << parameters.image >>:latest | gzip > << parameters.image >>.tar.gz
+            ls -lh << parameters.image >>.tar.gz
+
+jobs:
+  build-and-package:
+    executor: jdk
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - maven-deps-{{ checksum "pom.xml" }}
+            - maven-deps-
+      - run:
+          name: Build all services with Maven
+          command: mvn -B clean package -DskipTests
+      - save_cache:
+          paths:
+            - ~/.m2
+          key: maven-deps-{{ checksum "pom.xml" }}
+      - setup_remote_docker:
+          version: docker24
+      - build-and-save-image:
+          service: auth-service
+          image: food-delivery-auth
+      - build-and-save-image:
+          service: catalog-service
+          image: food-delivery-catalog
+      - build-and-save-image:
+          service: order-service
+          image: food-delivery-order
+      - build-and-save-image:
+          service: payment-service
+          image: food-delivery-payment
+      - build-and-save-image:
+          service: delivery-service
+          image: food-delivery-delivery
+      - build-and-save-image:
+          service: notification-service
+          image: food-delivery-notification
+      - persist_to_workspace:
+          root: .
+          paths:
+            - food-delivery-auth.tar.gz
+            - food-delivery-catalog.tar.gz
+            - food-delivery-order.tar.gz
+            - food-delivery-payment.tar.gz
+            - food-delivery-delivery.tar.gz
+            - food-delivery-notification.tar.gz
+            - << pipeline.parameters.docker-compose >>
+
+  transfer-and-run:
+    executor: base
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: Setup SSH Key
+          command: |
+            echo $SSH_PRIVATE_KEY_LOCAL | base64 --decode > ./id_rsa
+            chmod 400 id_rsa
+      - run:
+          name: Transfer Docker Images
+          no_output_timeout: 30m
+          command: |
+            for img in food-delivery-auth food-delivery-catalog food-delivery-order food-delivery-payment food-delivery-delivery food-delivery-notification; do
+              echo "📦 Transferring $img..."
+              scp -o "StrictHostKeyChecking=no" -i ./id_rsa ./${img}.tar.gz << pipeline.parameters.username >>@$LOCALHOST:/tmp/
+            done
+            echo "✅ All images transferred"
+      - run:
+          name: Transfer Docker Compose
+          command: |
+            scp -o "StrictHostKeyChecking=no" -i ./id_rsa ./<< pipeline.parameters.docker-compose >> << pipeline.parameters.username >>@$LOCALHOST:<< pipeline.parameters.remote-dir >>/<< pipeline.parameters.docker-compose >>
+            echo "✅ Docker-compose transferred"
+      - run:
+          name: Stop Remote Docker-Compose
+          command: |
+            ssh -o "StrictHostKeyChecking=no" -i ./id_rsa << pipeline.parameters.username >>@$LOCALHOST '
+              set -e
+              echo "🛑 Stopping containers..."
+              cd << pipeline.parameters.remote-dir >>
+
+              COMPOSE_FILE="<< pipeline.parameters.docker-compose >>"
+              COMPOSE_PROJECT="<< pipeline.parameters.compose-project-name >>"
+              ENV_FILE="<< pipeline.parameters.remote-env-file >>"
+
+              if ! docker info >/dev/null 2>&1; then
+                echo "Docker is not accessible for user $(whoami). Add user to docker group."
+                exit 1
+              fi
+
+              if [ -f "$COMPOSE_FILE" ]; then
+                if [ ! -r "$ENV_FILE" ]; then
+                  echo "Environment file $ENV_FILE is missing or not readable"
+                  exit 1
+                fi
+                docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down || true
+              else
+                echo "$COMPOSE_FILE not found, skipping..."
+              fi
+            '
+      - run:
+          name: Load Docker Images and Run Compose
+          no_output_timeout: 20m
+          command: |
+            ssh -o "StrictHostKeyChecking=no" -i ./id_rsa << pipeline.parameters.username >>@$LOCALHOST '
+              set -e
+              if ! docker info >/dev/null 2>&1; then
+                echo "Docker is not accessible for user $(whoami). Add user to docker group."
+                exit 1
+              fi
+
+              echo "📦 Loading Docker images..."
+              for img in food-delivery-auth food-delivery-catalog food-delivery-order food-delivery-payment food-delivery-delivery food-delivery-notification; do
+                gunzip -c /tmp/${img}.tar.gz | docker load
+                rm /tmp/${img}.tar.gz
+              done
+
+              echo "🚀 Starting services..."
+              cd << pipeline.parameters.remote-dir >>
+              COMPOSE_FILE="<< pipeline.parameters.docker-compose >>"
+              COMPOSE_PROJECT="<< pipeline.parameters.compose-project-name >>"
+              ENV_FILE="<< pipeline.parameters.remote-env-file >>"
+
+              if [ ! -r "$ENV_FILE" ]; then
+                echo "Environment file $ENV_FILE is missing or not readable"
+                exit 1
+              fi
+
+              docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
+
+              echo "🧹 Removing dangling images..."
+              docker image prune -f
+
+              echo "✅ Deployment complete!"
+              docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
+              echo "📋 Recent logs:"
+              docker-compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=30
+            '
+
+workflows:
+  deploy-dev:
+    jobs:
+      - build-and-package:
+          filters:
+            branches:
+              only:
+                - dev
+                - development
+      - transfer-and-run:
+          requires:
+            - build-and-package
+          filters:
+            branches:
+              only:
+                - dev
+                - development

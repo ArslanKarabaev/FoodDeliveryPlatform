@@ -81,4 +81,10 @@ public class RabbitMQConfig {
 
     @Bean
     public Queue passwordResetQueue() { return QueueBuilder.durable("password.reset").build(); }
+
+    @Bean
+    public Queue otpSendQueue() {
+        return new Queue("otp.send", true);
+    }
+
 }

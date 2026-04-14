@@ -56,6 +56,8 @@ public class OrderService {
         address.put("lat", request.getDeliveryAddress().getLat());
         address.put("lng", request.getDeliveryAddress().getLng());
         address.put("comment", request.getDeliveryAddress().getComment());
+        address.put("clientName", request.getClientName());
+        address.put("clientPhone", request.getClientPhone());
 
         Order order = Order.builder()
                 .orderNumber(generateOrderNumber())

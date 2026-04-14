@@ -18,6 +18,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -56,9 +57,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        String email = jwtService.extractEmail(token);
-        User user = userRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("User not founded"));
-        if (user != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+        UUID userId = jwtService.extractUserId(token);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+
+        if (SecurityContextHolder.getContext().getAuthentication() == null) {
             UsernamePasswordAuthenticationToken authToken =
                     new UsernamePasswordAuthenticationToken(
                             user,
