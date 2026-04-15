@@ -1,5 +1,7 @@
 package com.fooddelivery.order_service.Dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -23,4 +25,7 @@ public class CreateOrderRequest {
 
     @NotNull(message = "Номер телефона обязателен")
     private String clientPhone;
+
+    @JsonProperty("includeCutlery")
+    private boolean includeCutlery = false;
 }

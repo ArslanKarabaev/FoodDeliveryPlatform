@@ -58,6 +58,13 @@ public class CatalogController {
         return ResponseEntity.ok(catalogService.getMenu(id));
     }
 
+    @GetMapping("/restaurants/{id}/menu/tag")
+    public ResponseEntity<List<MenuCategoryResponse>> getMenuByTag(
+            @PathVariable UUID id,
+            @RequestParam(required = false) String tag) {
+        return ResponseEntity.ok(catalogService.getMenuByTag(id, tag));
+    }
+
     @PostMapping("/reviews")
     public ResponseEntity<String> addReview(
             @Valid @RequestBody CreateReviewRequest request,

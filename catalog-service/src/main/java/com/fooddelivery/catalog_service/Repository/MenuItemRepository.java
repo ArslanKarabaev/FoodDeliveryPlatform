@@ -16,6 +16,20 @@ public interface MenuItemRepository extends JpaRepository<MenuItem, UUID> {
 
     List<MenuItem> findByCategoryRestaurantId(UUID restaurantId);
 
-    @Query("SELECT m FROM MenuItem m JOIN FETCH m.category c JOIN FETCH c.restaurant WHERE m.id = :id")
+    @Query("""
+            SELECT m FROM MenuItem m
+            JOIN FETCH m.category c
+            JOIN FETCH c.restaurant
+            WHERE m.id = :id
+            """)
     Optional<MenuItem> findByIdWithCategoryAndRestaurant(@Param("id") UUID id);
+
+    @Query("""
+    SELECT m FROM MenuItem m
+    WHERE m.category.restaurant.id = :restaurantId
+    AND (:tag IS NULL OR CAST(m.tags AS string) LIKE %:tag%)
+    """)
+    List<MenuItem> findByRestaurantIdAndTag(
+            @Param("restaurantId") UUID restaurantId,
+            @Param("tag") String tag);
 }

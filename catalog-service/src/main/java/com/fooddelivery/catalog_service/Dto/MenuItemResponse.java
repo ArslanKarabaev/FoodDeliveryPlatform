@@ -23,4 +23,6 @@ public class MenuItemResponse {
     private Integer weightGrams;
     private List<String> allergens;
     private List<String> tags;
+    private String imageUrlPng;
+    private NutritionInfo nutritionInfo;
 }

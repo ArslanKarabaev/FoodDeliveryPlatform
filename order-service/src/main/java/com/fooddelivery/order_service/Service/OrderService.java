@@ -70,6 +70,7 @@ public class OrderService {
                 .platformCommission(commission)
                 .totalAmount(total)
                 .deliveryAddress(address)
+                .includeCutlery(request.isIncludeCutlery())
                 .build();
 
         Order saved = orderRepository.save(order);
