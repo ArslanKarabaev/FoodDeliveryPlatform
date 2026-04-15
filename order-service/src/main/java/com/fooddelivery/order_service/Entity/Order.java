@@ -73,4 +73,10 @@ public class Order {
 
     @UpdateTimestamp
     private LocalDateTime updatedAt;
+
+    @Column(name = "include_cutlery", nullable = false)
+    private boolean includeCutlery = false;
+
+    @Column(name = "ready_at")
+    private LocalDateTime readyAt;
 }

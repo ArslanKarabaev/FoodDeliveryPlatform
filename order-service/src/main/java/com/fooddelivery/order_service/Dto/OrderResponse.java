@@ -31,4 +31,6 @@ public class OrderResponse {
     private String yandexTrackingUrl;
     private LocalDateTime estimatedDeliveryAt;
     private LocalDateTime createdAt;
+    private boolean includeCutlery;
+    private LocalDateTime readyAt;
 }

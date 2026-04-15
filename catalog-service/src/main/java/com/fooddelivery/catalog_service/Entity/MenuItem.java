@@ -1,5 +1,6 @@
 package com.fooddelivery.catalog_service.Entity;
 
+import com.fooddelivery.catalog_service.Dto.NutritionInfo;
 import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -7,8 +8,10 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.Type;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -58,4 +61,11 @@ public class MenuItem {
 
     @UpdateTimestamp
     private LocalDateTime updatedAt;
+
+    @Column(name = "image_url_png")
+    private String imageUrlPng;
+
+    @Column(name = "nutrition_info", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private NutritionInfo nutritionInfo;
 }

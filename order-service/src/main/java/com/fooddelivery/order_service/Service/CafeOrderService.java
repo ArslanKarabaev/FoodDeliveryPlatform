@@ -11,6 +11,9 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -31,31 +34,49 @@ public class CafeOrderService {
     private final JwtService jwtService;
     private final CatalogServiceClient catalogServiceClient;
 
-    public List<OrderResponse> getOrders(UUID restaurantId) {
-        return orderRepository.findByRestaurantIdOrderByCreatedAtDesc(restaurantId)
-                .stream()
-                .map(orderMapper::toResponse)
-                .collect(Collectors.toList());
+    public Page<OrderResponse> getOrders(UUID cafeId, String status, int page, int size){
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Order> orders;
+
+        if(status != null && !status.isBlank()){
+            OrderStatus orderStatus = OrderStatus.valueOf(status.toUpperCase());
+            orders = orderRepository.findByRestaurantIdAndStatusOrderByCreatedAtDesc(cafeId, orderStatus, pageable);
+        }else {
+            orders = orderRepository.findByRestaurantIdOrderByCreatedAtDesc(cafeId, pageable);
+        }
+
+        return orders.map(orderMapper::toResponse);
     }
 
-    public void confirmOrder(UUID orderId) {
+    public Map<String, Long> getOrderCounts(UUID cafeId) {
+        List<Object[]> raw = orderRepository.countByRestaurantIdGroupByStatus(cafeId);
+        Map<String, Long> counts = new HashMap<>();
+        for (Object[] row : raw) {
+            counts.put(((OrderStatus) row[0]).name(), (Long) row[1]);
+        }
+        return counts;
+    }
+
+
+    public OrderResponse confirmOrderByCafe(UUID orderId, UUID cafeId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RuntimeException("Заказ не найден"));
 
+        if (!order.getRestaurantId().equals(cafeId)) {
+            throw new RuntimeException("Нет доступа к этому заказу");
+        }
+
         if (order.getStatus() != OrderStatus.PAID) {
-            throw new RuntimeException("Можно подтвердить только оплаченный заказ");
+            throw new IllegalStateException("Можно подтвердить только заказ в статусе PAID");
         }
 
         order.setStatus(OrderStatus.CONFIRMED);
         order.setCafeConfirmedAt(LocalDateTime.now());
         orderRepository.save(order);
 
-        Map<String, String> confirmedEvent = new HashMap<>();
-        confirmedEvent.put("orderId", order.getId().toString());
-        confirmedEvent.put("clientId", order.getClientId().toString());
-        rabbitTemplate.convertAndSend("order.confirmed", confirmedEvent);
-
         publishDeliveryRequest(order);
+
+        return orderMapper.toResponse(order);
     }
 
     public void markReady(UUID orderId) {
@@ -76,9 +97,13 @@ public class CafeOrderService {
         rabbitTemplate.convertAndSend("order.ready", readyEvent);
     }
 
-    public void cancelOrder(UUID orderId, String reason) {
+    public void cancelOrder(UUID orderId,UUID cafeId, String reason) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RuntimeException("Заказ не найден"));
+
+        if (!order.getRestaurantId().equals(cafeId)) {
+            throw new RuntimeException("Нет доступа к этому заказу");
+        }
 
         if (order.getStatus() == OrderStatus.DELIVERING ||
                 order.getStatus() == OrderStatus.DELIVERED) {
@@ -96,16 +121,10 @@ public class CafeOrderService {
         rabbitTemplate.convertAndSend("order.cancelled", cancelEvent);
     }
 
-    public UUID getRestaurantIdFromToken(HttpServletRequest request) {
-        String token = request.getHeader("Authorization").substring(7);
-        return jwtService.extractCafeId(token);
-    }
-
     private void publishDeliveryRequest(Order order) {
         CatalogServiceClient.RestaurantInfo restaurant =
                 catalogServiceClient.getRestaurantInfo(order.getRestaurantId());
 
-        // Адрес клиента из сохранённого deliveryAddress
         Map<String, Object> addr = order.getDeliveryAddress();
 
         Map<String, Object> deliveryEvent = new HashMap<>();
@@ -113,14 +132,12 @@ public class CafeOrderService {
         deliveryEvent.put("restaurantId", order.getRestaurantId().toString());
         deliveryEvent.put("clientId", order.getClientId().toString());
 
-        // Откуда (ресторан)
         deliveryEvent.put("fromAddress", restaurant.getAddress());
         deliveryEvent.put("fromLat", restaurant.getLatitude());
         deliveryEvent.put("fromLng", restaurant.getLongitude());
         deliveryEvent.put("restaurantName", restaurant.getName());
         deliveryEvent.put("restaurantPhone", restaurant.getPhone());
 
-        // Куда (клиент)
         String toAddress = addr.get("city") + ", " + addr.get("street");
         deliveryEvent.put("toAddress", toAddress);
         deliveryEvent.put("toLat", addr.get("lat"));

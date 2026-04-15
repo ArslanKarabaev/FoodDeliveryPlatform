@@ -128,8 +128,9 @@ public class CafeAdminService {
             case "logo" -> "logos";
             case "cover" -> "covers";
             case "menu-item" -> "menu-items";
+            case "menu-item-png" -> "menu-item-png";
             default -> throw new IllegalArgumentException(
-                    "Неверный тип " + type + ". Доступно только logo, cover, menu-item");
+                    "Неверный тип " + type + ". Доступно только logo, cover, menu-item, menu-item-png");
         };
 
         String url = storageService.uploadFile(file, folder);

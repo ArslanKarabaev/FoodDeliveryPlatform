@@ -2,11 +2,14 @@ package com.fooddelivery.catalog_service.Service;
 
 import com.fooddelivery.catalog_service.Client.OrderServiceClient;
 import com.fooddelivery.catalog_service.Dto.MenuCategoryResponse;
+import com.fooddelivery.catalog_service.Dto.MenuItemResponse;
 import com.fooddelivery.catalog_service.Dto.RestaurantResponse;
+import com.fooddelivery.catalog_service.Entity.MenuItem;
 import com.fooddelivery.catalog_service.Entity.Restaurant;
 import com.fooddelivery.catalog_service.Enum.CuisineType;
 import com.fooddelivery.catalog_service.Mapper.RestaurantMapper;
 import com.fooddelivery.catalog_service.Repository.MenuCategoryRepository;
+import com.fooddelivery.catalog_service.Repository.MenuItemRepository;
 import com.fooddelivery.catalog_service.Repository.RestaurantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -25,6 +28,7 @@ public class CatalogService {
     private final MenuCategoryRepository menuCategoryRepository;
     private final RestaurantMapper restaurantMapper;
     private final OrderServiceClient orderServiceClient;
+    private final MenuItemRepository menuItemRepository;
 
     public Page<RestaurantResponse> getRestaurants(
             String city,
@@ -45,6 +49,25 @@ public class CatalogService {
     }
 
     public List<MenuCategoryResponse> getMenu(UUID restaurantId) {
+        return menuCategoryRepository.findByRestaurantIdWithItems(restaurantId)
+                .stream()
+                .map(restaurantMapper::toCategoryResponse)
+                .collect(Collectors.toList());
+    }
+
+    public List<MenuCategoryResponse> getMenuByTag(UUID restaurantId, String tag) {
+        if (tag != null && !tag.isBlank()) {
+            List<MenuItem> items = menuItemRepository.findByRestaurantIdAndTag(restaurantId, tag);
+
+            MenuCategoryResponse filtered = new MenuCategoryResponse();
+            filtered.setName(tag);
+            filtered.setItems(items.stream()
+                    .map(restaurantMapper::toItemResponse)
+                    .collect(Collectors.toList()));
+
+            return List.of(filtered);
+        }
+
         return menuCategoryRepository.findByRestaurantIdWithItems(restaurantId)
                 .stream()
                 .map(restaurantMapper::toCategoryResponse)

@@ -25,6 +25,9 @@ public class CreateMenuItemRequest {
     private List<String> allergens;
     private List<String> tags;
 
+    private String imageUrlPng;
+    private NutritionInfo nutritionInfo;
+
     public interface OnCreate {}
     public interface OnUpdate {}
 }
